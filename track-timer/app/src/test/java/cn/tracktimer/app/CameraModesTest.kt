@@ -18,6 +18,23 @@ class CameraModesTest {
         highSpeed: Map<Size, List<Range<Int>>> = emptyMap()) = CameraCapabilities("0",
         mapOf(hd to 16_666_666L, full to 16_666_666L), preview, ranges, highSpeed, true, 90, true)
 
+    @Test fun cameraOnlyUsesPrivateCapabilitiesWithoutRecorderOrPreview() {
+        val device = caps(preview = emptyMap()).copy(recorderSizes = emptyMap(), privateSizes = mapOf(hd to 16_666_666L))
+        val c = CameraModes.select(listOf(device), CameraTestMode.HD60_CAPTURE_ONLY)!!
+        assertTrue(c.captureOnly); assertFalse(c.previewEnabled); assertEquals(hd, c.size)
+        assertNull(CameraModes.select(listOf(device), CameraTestMode.HD60_RECORD_ONLY))
+    }
+    @Test fun cameraOnlyRejectsSlowOrAbsentPrivateOutputWithoutSubstitution() {
+        assertNull(CameraModes.select(listOf(caps()), CameraTestMode.HD60_CAPTURE_ONLY))
+        assertNull(CameraModes.select(listOf(caps().copy(privateSizes = mapOf(hd to 33_333_333L))), CameraTestMode.HD60_CAPTURE_ONLY))
+        assertNull(CameraModes.select(listOf(caps().copy(privateSizes = mapOf(hd to 16_666_666L))), CameraTestMode.FHD60_CAPTURE_ONLY))
+    }
+    @Test fun comparisonKeepsThePinnedCameraEvenIfAnotherSupportsMoreModes() {
+        val first = caps().copy(id = "0", privateSizes = emptyMap())
+        val other = caps().copy(id = "2", privateSizes = mapOf(hd to 16_666_666L))
+        assertNull(CameraModes.select(listOf(first, other), CameraTestMode.HD60_CAPTURE_ONLY, "0"))
+        assertEquals("2", CameraModes.select(listOf(first, other), CameraTestMode.HD60_CAPTURE_ONLY, "2")!!.id)
+    }
     @Test fun explicit1080pDoesNotGetReplacedWithPreferred720p() {
         val config = CameraModes.select(listOf(caps()), CameraTestMode.FHD60_PREVIEW)!!
         assertEquals(full, config.size); assertEquals(Range(60, 60), config.range)
