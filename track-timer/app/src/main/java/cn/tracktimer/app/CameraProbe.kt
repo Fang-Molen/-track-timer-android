@@ -21,7 +21,8 @@ import java.io.File
 /** Owns a single short recording. All camera state is confined to the worker looper. */
 class CameraProbe(private val context: Context, private val store: ReportStore,
     private val texture: TextureView, private val onStatus: (String) -> Unit,
-    private val onDone: (JSONObject) -> Unit) {
+    private val onDone: (JSONObject) -> Unit,
+    private val mode: CameraTestMode = CameraTestMode.AUTOMATIC) {
     private val worker = HandlerThread("camera-probe").apply { start() }
     private val handler = Handler(worker.looper)
     private val main = Handler(Looper.getMainLooper())
@@ -39,31 +40,38 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private val frames = JSONArray()
     private val times = ArrayList<Long>()
     private val autoStop = Runnable { finish(null) }
+    private val startupTimeout = Runnable { finish("等待相机打开或配置超时，请换一个模式并导出日志。") }
+    private var configuredOutputCount = 0
+    private var requestCaptureIntent: Int? = null
 
     @SuppressLint("MissingPermission")
     fun start() {
-        val surfaceTexture = texture.surfaceTexture
-        if (!texture.isAvailable || surfaceTexture == null) { stop("预览尚未就绪，请重试。"); return }
+        val surfaceTexture = if (mode.previewEnabled) texture.surfaceTexture else null
+        if (mode.previewEnabled && (!texture.isAvailable || surfaceTexture == null)) { stop("预览尚未就绪，请重试。"); return }
         handler.post {
             try {
+                if (finished) return@post
+                handler.postDelayed(startupTimeout, 8_000)
                 check(store.directory.usableSpace > 100L * 1024 * 1024) { "存储空间不足，请至少保留 100 MB。" }
-                val c = DeviceReport.cameraConfig(context); config = c
+                val c = DeviceReport.cameraConfig(context, mode); config = c
                 val file = store.newFile("video", "pending"); video = file
-                surfaceTexture.setDefaultBufferSize(c.size.width, c.size.height)
-                preview = Surface(surfaceTexture)
+                if (c.previewEnabled) {
+                    checkNotNull(surfaceTexture).setDefaultBufferSize(c.size.width, c.size.height)
+                    preview = Surface(surfaceTexture)
+                }
                 @Suppress("DEPRECATION")
                 val r = MediaRecorder()
                 recorder = r
                 r.setVideoSource(MediaRecorder.VideoSource.SURFACE)
                 r.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4)
                 r.setOutputFile(file.absolutePath)
-                r.setVideoEncodingBitRate(if (c.targetFps >= 60) 8_000_000 else 4_000_000)
+                r.setVideoEncodingBitRate(when { c.highSpeed -> 16_000_000; c.size.width >= 1920 -> 12_000_000; c.targetFps >= 60 -> 8_000_000; else -> 4_000_000 })
                 r.setVideoFrameRate(c.targetFps)
                 r.setVideoSize(c.size.width, c.size.height)
                 r.setVideoEncoder(MediaRecorder.VideoEncoder.H264)
                 r.setOrientationHint(c.sensorOrientation)
                 r.prepare()
-                status("正在打开后置相机 · 请求 ${c.targetFps} fps")
+                status("${mode.label}\n正在打开后置相机${if (!c.previewEnabled) "；此模式不显示预览" else ""}")
                 context.getSystemService(CameraManager::class.java).openCamera(c.id, object : CameraDevice.StateCallback() {
                     override fun onOpened(device: CameraDevice) {
                         if (!cameraGate.accept(device)) return
@@ -80,14 +88,16 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     @Suppress("DEPRECATION")
     private fun configure(device: CameraDevice, c: CameraConfig, r: MediaRecorder) {
         try {
-            val outputs = listOf(preview!!, r.surface)
+            val outputs = CameraSessionSetup.outputs(c, r.surface, preview)
+            configuredOutputCount = outputs.size
             val request = CameraSessionSetup.recordRequest(device, c, outputs)
+            requestCaptureIntent = request[CaptureRequest.CONTROL_CAPTURE_INTENT]
             sessionParametersSubmitted = CameraSessionSetup.open(device, outputs, request, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     if (finished) { s.close(); return }
                     session = s
                     try {
-                        s.setRepeatingRequest(request, object : CameraCaptureSession.CaptureCallback() {
+                        CameraSessionSetup.repeat(s, request, object : CameraCaptureSession.CaptureCallback() {
                             override fun onCaptureCompleted(s: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                                 if (!recording || finished) return
                                 val sensor = result[CaptureResult.SENSOR_TIMESTAMP]
@@ -101,17 +111,20 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                                     .put("aeMode", result[CaptureResult.CONTROL_AE_MODE] ?: JSONObject.NULL)
                                     .put("controlMode", result[CaptureResult.CONTROL_MODE] ?: JSONObject.NULL)
                                     .put("sceneMode", result[CaptureResult.CONTROL_SCENE_MODE] ?: JSONObject.NULL)
+                                    .put("captureIntent", result[CaptureResult.CONTROL_CAPTURE_INTENT] ?: JSONObject.NULL)
+                                    .put("videoStabilizationMode", result[CaptureResult.CONTROL_VIDEO_STABILIZATION_MODE] ?: JSONObject.NULL)
                                     .put("rollingShutterSkewNs", result[CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW] ?: JSONObject.NULL))
-                                if (frames.length() == 1) status("正在录制 10 秒 · 请求 ${c.targetFps} fps\n已收到真实相机帧；可同时测试发令音。")
+                                if (frames.length() == 1) status("${mode.label}\n正在录制10秒；${if (c.previewEnabled) "已收到相机帧" else "仅录像，不显示预览"}。")
                             }
                             override fun onCaptureFailed(s: CameraCaptureSession, r: CaptureRequest, failure: CaptureFailure) { failedCaptures++ }
-                        }, handler)
+                        }, handler, c.highSpeed)
                         r.start(); startedNs = SystemClock.elapsedRealtimeNanos(); recording = true
+                        handler.removeCallbacks(startupTimeout)
                         handler.postDelayed(autoStop, 10_000)
                     } catch (e: Exception) { finish(e.message ?: "无法开始录像") }
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) { finish("此分辨率/帧率组合无法启动，请导出设备报告。") }
-            }, handler)
+            }, handler, c.highSpeed)
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
     }
 
@@ -120,7 +133,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private fun finish(error: String?) {
         if (finished) return
         finished = true
-        handler.removeCallbacks(autoStop)
+        handler.removeCallbacks(autoStop); handler.removeCallbacks(startupTimeout)
         var problem = error
         runCatching { session?.stopRepeating() }
         runCatching { session?.abortCaptures() }
@@ -129,8 +142,13 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         recording = false
         runCatching { session?.close() }; runCatching { cameraGate.close() }
         runCatching { recorder?.reset() }; runCatching { recorder?.release() }; runCatching { preview?.release() }
-        val report = JSONObject().put("kind", "camera_probe").put("requestedFps", config?.targetFps)
-            .put("size", config?.size?.toString()).put("cameraId", config?.id)
+        val report = JSONObject().put("kind", "camera_probe").put("testMode", mode.name).put("testModeLabel", mode.label)
+            .put("requestedFps", config?.targetFps ?: mode.fps ?: JSONObject.NULL)
+            .put("size", config?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL).put("cameraId", config?.id ?: JSONObject.NULL)
+            .put("previewEnabled", mode.previewEnabled).put("outputSurfaceCount", configuredOutputCount)
+            .put("sessionType", if (mode.highSpeed) "constrained_high_speed" else "regular")
+            .put("highSpeedBatchTimestampsUnverified", mode.highSpeed)
+            .put("requestCaptureIntent", requestCaptureIntent ?: JSONObject.NULL)
             .put("cameraClockRealtime", config?.realtime ?: false)
             .put("recordStartCallbackElapsedNs", startedNs).put("failedCaptures", failedCaptures)
             .put("requestedAeFpsRange", config?.range?.toString() ?: JSONObject.NULL)

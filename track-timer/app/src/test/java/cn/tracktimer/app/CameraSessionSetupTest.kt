@@ -4,6 +4,7 @@ import android.Manifest
 import android.graphics.SurfaceTexture
 import android.hardware.camera2.*
 import android.hardware.camera2.params.SessionConfiguration
+import android.hardware.camera2.params.OutputConfiguration
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -73,6 +74,42 @@ class CameraSessionSetupTest {
         }
     }
 
+    @Test fun highSpeedUsesDedicatedSessionAndRepeatingBurst() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(120, 120), 120, true, 90, highSpeed = true)
+            val request = CameraSessionSetup.recordRequest(camera, c, outputs)
+            CameraSessionSetup.open(camera, outputs, request, callback, handler, highSpeed = true)
+            assertEquals(SessionConfiguration.SESSION_HIGH_SPEED, RecordingCameraShadow.lastConfiguration!!.sessionType)
+            val session = FakeHighSpeedSession(camera)
+            CameraSessionSetup.repeat(session, request, object : CameraCaptureSession.CaptureCallback() {}, handler, highSpeed = true)
+            assertTrue(session.createdList); assertSame(session.batch, session.submittedBurst)
+            assertEquals(0, session.normalRepeatCount)
+        }
+    }
+
+    @Test @Config(sdk = [26]) fun android8UsesItsDedicatedHighSpeedApi() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(120, 120), 120, true, 90)
+            val request = CameraSessionSetup.recordRequest(camera, c, outputs)
+            assertFalse(CameraSessionSetup.open(camera, outputs, request, callback, handler, highSpeed = true))
+            assertTrue(RecordingCameraShadow.legacyHighSpeedCalled)
+            assertFalse(RecordingCameraShadow.legacyCalled)
+        }
+    }
+
+    @Test fun encoderOnlyRequestAndSessionDoNotIncludeAPreviewSurface() {
+        withCamera { camera, surfaces, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(60, 60), 60, true, 90, previewEnabled = false)
+            val outputs = CameraSessionSetup.outputs(c, surfaces[0], null)
+            assertEquals(listOf(surfaces[0]), outputs)
+            val request = CameraSessionSetup.recordRequest(camera, c, outputs)
+            val targets = org.robolectric.util.ReflectionHelpers.callInstanceMethod<Collection<Surface>>(request, "getTargets")
+            assertEquals(setOf(surfaces[0]), targets.toSet())
+            CameraSessionSetup.open(camera, outputs, request, callback, handler)
+            assertEquals(1, RecordingCameraShadow.lastConfiguration!!.outputConfigurations.size)
+        }
+    }
+
     private val callback = object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) = Unit
         override fun onConfigureFailed(session: CameraCaptureSession) = Unit
@@ -80,6 +117,7 @@ class CameraSessionSetupTest {
 
     private fun withCamera(block: (CameraDevice, List<Surface>, Handler) -> Unit) {
         RecordingCameraShadow.lastConfiguration = null; RecordingCameraShadow.legacyCalled = false
+        RecordingCameraShadow.legacyHighSpeedCalled = false
         val app = RuntimeEnvironment.getApplication()
         shadowOf(app).grantPermissions(Manifest.permission.CAMERA)
         val manager = app.getSystemService(CameraManager::class.java)
@@ -110,9 +148,36 @@ class RecordingCameraShadow : ShadowCameraDeviceImpl() {
     override fun createCaptureSession(outputs: MutableList<Surface>, callback: CameraCaptureSession.StateCallback, handler: Handler) {
         legacyCalled = true
     }
+    @Implementation
+    protected fun createConstrainedHighSpeedCaptureSession(outputs: MutableList<Surface>, callback: CameraCaptureSession.StateCallback, handler: Handler) {
+        legacyHighSpeedCalled = true
+    }
     companion object {
         var lastConfiguration: SessionConfiguration? = null
         var legacyCalled = false
         var lastBuilder: CaptureRequest.Builder? = null
+        var legacyHighSpeedCalled = false
     }
+}
+
+private class FakeHighSpeedSession(private val camera: CameraDevice) : CameraConstrainedHighSpeedCaptureSession() {
+    var createdList = false
+    lateinit var batch: List<CaptureRequest>
+    var submittedBurst: List<CaptureRequest>? = null
+    var normalRepeatCount = 0
+    override fun createHighSpeedRequestList(request: CaptureRequest): List<CaptureRequest> {
+        createdList = true; batch = listOf(request, request, request, request); return batch
+    }
+    override fun setRepeatingBurst(requests: MutableList<CaptureRequest>, callback: CaptureCallback?, handler: Handler?): Int { submittedBurst = requests; return 1 }
+    override fun setRepeatingRequest(request: CaptureRequest, callback: CaptureCallback?, handler: Handler?): Int { normalRepeatCount++; return 1 }
+    override fun getDevice() = camera
+    override fun prepare(surface: Surface) = Unit
+    override fun finalizeOutputConfigurations(outputs: MutableList<OutputConfiguration>) = Unit
+    override fun capture(request: CaptureRequest, callback: CaptureCallback?, handler: Handler?) = 1
+    override fun captureBurst(requests: MutableList<CaptureRequest>, callback: CaptureCallback?, handler: Handler?) = 1
+    override fun stopRepeating() = Unit
+    override fun abortCaptures() = Unit
+    override fun isReprocessable() = false
+    override fun getInputSurface(): Surface? = null
+    override fun close() = Unit
 }

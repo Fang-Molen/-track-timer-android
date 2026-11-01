@@ -9,49 +9,36 @@ import android.media.AudioManager
 import android.media.MediaCodecList
 import android.media.MediaRecorder
 import android.os.Build
-import android.util.Range
-import android.util.Size
 import org.json.JSONArray
 import org.json.JSONObject
 
-data class CameraConfig(val id: String, val size: Size, val range: Range<Int>,
-    val targetFps: Int, val realtime: Boolean, val sensorOrientation: Int,
-    val recorderMinFrameDurationNs: Long = 0, val previewMinFrameDurationNs: Long = 0,
-    val fpsIsSessionKey: Boolean = false)
-
 object DeviceReport {
-    fun cameraConfig(context: Context): CameraConfig {
+    fun cameraConfig(context: Context, mode: CameraTestMode = CameraTestMode.AUTOMATIC): CameraConfig =
+        CameraModes.select(cameraCapabilities(context), mode)
+            ?: error("设备未声明支持此模式：${mode.label}。请换一个模式并导出日志。")
+
+    private fun cameraCapabilities(context: Context): List<CameraCapabilities> {
         val manager = context.getSystemService(CameraManager::class.java)
-        val candidates = manager.cameraIdList.mapNotNull { id ->
+        return manager.cameraIdList.mapNotNull { id ->
             val c = manager.getCameraCharacteristics(id)
             if (c[CameraCharacteristics.LENS_FACING] != CameraCharacteristics.LENS_FACING_BACK) return@mapNotNull null
             val map = c[CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP] ?: return@mapNotNull null
-            val previewSizes = map.getOutputSizes(SurfaceTexture::class.java)?.toSet().orEmpty()
-            val sizes = map.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty()
-                .filter { it.width <= 1920 && it.height <= 1080 && it in previewSizes }
-            if (sizes.isEmpty()) return@mapNotNull null
-            val ranges = c[CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES]?.toList().orEmpty()
-            val options = listOf(60, 30).flatMap { fps ->
-                ranges.filter { it.contains(fps) && it.upper <= fps }.flatMap { range ->
-                    sizes.filter { size ->
-                        supportsFrameRate(fps, map.getOutputMinFrameDuration(MediaRecorder::class.java, size),
-                            map.getOutputMinFrameDuration(SurfaceTexture::class.java, size))
-                    }.map { size ->
-                        CameraConfig(id, size, range, fps,
-                            c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE] == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME,
-                            c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 0,
-                            map.getOutputMinFrameDuration(MediaRecorder::class.java, size),
-                            map.getOutputMinFrameDuration(SurfaceTexture::class.java, size),
-                            Build.VERSION.SDK_INT >= 28 && c.availableSessionKeys?.contains(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE) == true)
-                    }
-                }
-            }
-            options.sortedWith(compareByDescending<CameraConfig> { it.targetFps }
-                .thenBy { if (it.size == Size(1280, 720)) 0 else 1 }
-                .thenByDescending { it.range.lower }.thenByDescending { it.size.width * it.size.height }).firstOrNull()
+            val recorders = map.getOutputSizes(MediaRecorder::class.java)?.associateWith {
+                map.getOutputMinFrameDuration(MediaRecorder::class.java, it)
+            }.orEmpty()
+            val previews = map.getOutputSizes(SurfaceTexture::class.java)?.associateWith {
+                map.getOutputMinFrameDuration(SurfaceTexture::class.java, it)
+            }.orEmpty()
+            val highSpeed = if (c[CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES]?.contains(
+                    CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_CONSTRAINED_HIGH_SPEED_VIDEO) == true)
+                map.highSpeedVideoSizes?.associateWith { map.getHighSpeedVideoFpsRangesFor(it).toList() }.orEmpty()
+                else emptyMap()
+            CameraCapabilities(id, recorders, previews,
+                c[CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES]?.toList().orEmpty(), highSpeed,
+                c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE] == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME,
+                c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 0,
+                Build.VERSION.SDK_INT >= 28 && c.availableSessionKeys?.contains(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE) == true)
         }
-        return candidates.maxByOrNull { it.targetFps }
-            ?: error("未找到可用的后置普通录像配置；请先导出设备报告。")
     }
 
     fun supportsFrameRate(fps: Int, recorderMinNs: Long, previewMinNs: Long): Boolean {
@@ -97,11 +84,20 @@ object DeviceReport {
         val devices = JSONArray(audio.getDevices(AudioManager.GET_DEVICES_INPUTS or AudioManager.GET_DEVICES_OUTPUTS).map {
             JSONObject().put("type", it.type).put("isSource", it.isSource).put("name", it.productName.toString())
         })
-        val choice = runCatching { cameraConfig(context) }
+        val capabilities = runCatching { cameraCapabilities(context) }
+        val choice = runCatching { CameraModes.select(capabilities.getOrThrow(), CameraTestMode.AUTOMATIC)
+            ?: error("未找到自动录像配置") }
+        val testModes = JSONArray(CameraTestMode.entries.map { mode ->
+            val c = capabilities.getOrNull()?.let { CameraModes.select(it, mode) }
+            JSONObject().put("mode", mode.name).put("label", mode.label)
+                .put("advertisedSupported", c != null).put("previewEnabled", mode.previewEnabled)
+                .put("highSpeed", mode.highSpeed).put("requestedFps", c?.targetFps ?: mode.fps ?: JSONObject.NULL)
+                .put("size", c?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL)
+        })
         val report = JSONObject().put("kind", "device")
             .put("manufacturer", Build.MANUFACTURER).put("model", Build.MODEL)
             .put("androidRelease", Build.VERSION.RELEASE).put("api", Build.VERSION.SDK_INT)
-            .put("cameras", cameras).put("audioDevices", devices)
+            .put("cameras", cameras).put("testModes", testModes).put("audioDevices", devices)
             .put("unprocessedAudioSupported", audio.getProperty(AudioManager.PROPERTY_SUPPORT_AUDIO_SOURCE_UNPROCESSED))
             .put("h264Encoders", JSONArray(MediaCodecList(MediaCodecList.REGULAR_CODECS).codecInfos.filter {
                 it.isEncoder && it.supportedTypes.any { type -> type.equals("video/avc", ignoreCase = true) }
