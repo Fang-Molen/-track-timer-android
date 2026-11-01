@@ -11,6 +11,8 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
 import android.text.InputType
 import android.view.Gravity
@@ -44,11 +46,20 @@ class MainActivity : Activity() {
     private var server: SyncServer? = null
     private var previousCalibration: Calibration? = null
     private var cameraProbe: CameraProbe? = null
+    private var comparison: CameraComparison? = null
+    private var comparisonStarting = false
+    private var comparisonGeneration = 0
+    private val cameraSequenceHandler = Handler(Looper.getMainLooper())
+    private lateinit var comparisonButton: Button
+    private lateinit var comparisonStatus: TextView
+    private lateinit var detectButton: Button
     private var audioProbe: AudioProbe? = null
     private var syncBusy = false
     private var syncGeneration = 0
     private var exportBusy = false
     private var permissionAction: (() -> Unit)? = null
+    private var pendingGrantedAction: (() -> Unit)? = null
+    private var resumed = false
     private lateinit var deviceStatus: TextView
     private lateinit var hostStatus: TextView
     private lateinit var syncStatus: TextView
@@ -101,7 +112,7 @@ class MainActivity : Activity() {
         section(device, "01", "这台手机", "读取第三方 App 实际能调用的拍摄模式。")
         deviceStatus = text("${Build.MANUFACTURER} ${Build.MODEL}\nAndroid ${Build.VERSION.RELEASE} · 待检测", 15, ink)
         device.addView(deviceStatus, spaced(12))
-        val detect = button("检测并保存设备报告")
+        val detect = button("检测并保存设备报告").also { detectButton = it }
         device.addView(detect, spaced(12))
         detect.setOnClickListener {
             detect.isEnabled = false
@@ -136,7 +147,15 @@ class MainActivity : Activity() {
         sync.addView(syncStatus, spaced(10))
 
         val capture = card(page)
-        section(capture, "03", "验证采集能力", "手机固定，光线充足。录像与录音测试可以同时进行。")
+        section(capture, "03", "验证采集能力", "手机固定，光线充足。一键排查期间请保持本页前台，暂不进行声音或对时测试。")
+        comparisonButton = button("一键排查60帧（约1分钟）")
+        capture.addView(comparisonButton, spaced(12))
+        comparisonStatus = text("自动对照纯采集与正式录像，最后检查120帧高速通道。全程没有预览画面；纯采集只保存时间戳。", 13, muted).apply { setTextIsSelectable(true) }
+        capture.addView(comparisonStatus, spaced(8))
+        comparisonButton.setOnClickListener {
+            if (comparisonStarting || comparison != null) cancelComparison("用户停止排查")
+            else withPermission(Manifest.permission.CAMERA) { startComparison() }
+        }
         // TextureView rejects background drawables; the containing frame owns its background.
         preview = TextureView(this)
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.rgb(19, 35, 31)) }
@@ -155,11 +174,12 @@ class MainActivity : Activity() {
         cameraMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
             override fun onNothingSelected(parent: AdapterView<*>?) = Unit
             override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
-                if (cameraProbe != null) return
+                if (cameraProbe != null || comparison != null || comparisonStarting) return
                 val mode = CameraTestMode.entries[position]
                 preview.visibility = if (mode.previewEnabled) View.VISIBLE else View.INVISIBLE
                 previewCover.visibility = if (mode.previewEnabled) View.GONE else View.VISIBLE
                 cameraStatus.text = mode.label + "\n" + when {
+                    mode.captureOnly -> "只接收相机帧并立即释放；不显示预览，不保存视频。"
                     !mode.previewEnabled -> "此模式不显示预览；点录制后仍会保存完整视频。"
                     mode.highSpeed -> "实验性高速录像；实际帧率以测量结果为准。"
                     else -> "预览在录像测试时开启；实际帧率以测量结果为准。"
@@ -254,31 +274,107 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startCamera() {
-        if (cameraProbe != null) return
-        val mode = CameraTestMode.entries[cameraMode.selectedItemPosition]
-        cameraButton.text = "停止录像"; cameraStatus.text = "${mode.label}\n正在配置相机……"
-        cameraProbe = CameraProbe(this, store, preview, { cameraStatus.text = it }, { report ->
-            if (!isDestroyed) {
-                cameraProbe = null; cameraButton.text = "录制 10 秒视频"; cameraButton.isEnabled = true
-                cameraStatus.text = mode.label + "\n" + if (!report.isNull("error")) "录像测试未完成：${report.optString("error")}"
-                else "采集帧率：${number(report, "captureFps")} fps\n编码视频帧率：${number(report, "encodedFps")} fps\n" +
-                    "最大采集间隔：${ms(report.optLong("maxFrameGapNs"))} ms\n" +
-                    (if (!report.optBoolean("requestedFpsAchieved")) "未达到请求的 ${report.optInt("requestedFps")} fps；请导出报告排查。\n" else "") +
-                    "视频已保存；采集与编码时间映射仍待标定。"
-                val result = if (!report.isNull("error")) "未完成：${report.optString("error")}" else
-                    "采集 ${number(report, "captureFps")} / 视频 ${number(report, "encodedFps")} fps"
-                cameraHistory[mode] = "${mode.label}\n$result"
-                cameraHistoryStatus.text = cameraHistory.values.joinToString("\n\n")
-                if (report.has("saveError")) cameraStatus.append("\n报告保存失败：${report.optString("saveError")}")
+    private fun startComparison() {
+        if (comparisonStarting || comparison != null || cameraProbe != null || audioProbe != null || syncBusy || exportBusy) return
+        comparisonStarting = true
+        val generation = ++comparisonGeneration
+        val runId = UUID.randomUUID().toString()
+        stopHost()
+        comparisonStatus.text = "正在保存设备能力并选择同一后置相机……"
+        updateButtons()
+        jobs.execute {
+            val result = runCatching {
+                val device = DeviceReport.collect(this).put("runId", runId)
+                store.saveJson("device", device)
+                if (device.has("selectedCamera")) device.getString("selectedCamera")
+                else DeviceReport.cameraCapabilities(this).firstOrNull()?.id ?: error("没有可供排查的后置相机")
+            }
+            ui {
+                if (generation != comparisonGeneration || !comparisonStarting) return@ui
+                comparisonStarting = false
+                result.onSuccess { id ->
+                    comparison = CameraComparison(id, runId)
+                    startComparisonStep(checkNotNull(comparison))
+                }.onFailure {
+                    val failure = JSONObject().put("kind", "camera_comparison").put("runId", runId)
+                        .put("preparationError", it.message).put("completed", false).put("precisionVerified", false)
+                    runCatching { store.saveJson("comparison", failure) }
+                    comparisonStatus.text = "排查未能开始：${it.message}"
+                }
                 updateButtons(); updateReportCount()
             }
-        }, mode).also { it.start() }
+        }
+    }
+
+    private fun startComparisonStep(run: CameraComparison) {
+        if (comparison !== run) return
+        val mode = run.current
+        if (mode == null) { finishComparison(run); return }
+        preview.visibility = View.INVISIBLE
+        previewCover.visibility = View.VISIBLE
+        previewCover.text = "自动排查中\n不显示预览画面"
+        comparisonStatus.text = "第 ${run.stepNumber}/${CameraComparison.modes.size} 项 · ${mode.label}\n每项10秒；不支持或失败会写入报告。"
+        startCamera(mode, run)
+    }
+
+    private fun finishComparison(run: CameraComparison) {
+        val summary = run.report()
+        val saved = runCatching { store.saveJson("comparison", summary) }
+        if (comparison === run) comparison = null
+        comparisonStatus.text = if (summary.optBoolean("cancelled")) "排查已中断，已完成项目保留。"
+            else "自动排查完成：${summary.optInt("passedStepCount")}/${CameraComparison.modes.size} 项达到请求帧率。\n请导出小日志；纯采集达标不等于录像达标，具体原因需结合报告分析。"
+        saved.onFailure { comparisonStatus.append("\n汇总保存失败：${it.message}") }
+        restorePreviewMode(); updateButtons(); updateReportCount()
+    }
+
+    private fun cancelComparison(reason: String) {
+        ++comparisonGeneration
+        comparisonStarting = false
+        val run = comparison
+        if (run != null) { run.cancel(); finishComparison(run) }
+        else comparisonStatus.text = reason
+        cameraProbe?.stop(reason)
+        cameraSequenceHandler.removeCallbacksAndMessages(null)
+        updateButtons()
+    }
+
+    private fun restorePreviewMode() {
+        val mode = CameraTestMode.entries[cameraMode.selectedItemPosition]
+        preview.visibility = if (mode.previewEnabled) View.VISIBLE else View.INVISIBLE
+        previewCover.visibility = if (mode.previewEnabled) View.GONE else View.VISIBLE
+        previewCover.text = "仅录像 / 纯采集模式\n不显示预览画面"
+    }
+
+    private fun startCamera(mode: CameraTestMode = CameraTestMode.entries[cameraMode.selectedItemPosition], run: CameraComparison? = null) {
+        if (cameraProbe != null || (run == null && (comparison != null || comparisonStarting))) return
+        cameraButton.text = "停止采集"; cameraStatus.text = "${mode.label}\n正在配置相机……"
+        cameraProbe = CameraProbe(this, store, preview, { if (!isDestroyed) cameraStatus.text = it }, { report ->
+            cameraProbe = null
+            if (!isDestroyed) {
+                cameraButton.text = "录制 10 秒视频"
+                val consumer = if (mode.captureOnly) "图像消费 ${number(report, "imageFps")}" else "视频 ${number(report, "encodedFps")}"
+                val result = if (!report.isNull("error")) "未完成：${report.optString("error")}" else
+                    "采集 ${number(report, "captureFps")} / $consumer fps"
+                cameraStatus.text = mode.label + "\n" + result + "\n" +
+                    (if (!report.isNull("error")) "本项未完整完成，详情已写入日志。"
+                    else if (mode.captureOnly) "只保存时间戳，不保存视频。"
+                    else if (report.has("videoFile")) "录像已保存；时间映射仍待标定。" else "未获得可用视频文件。") +
+                    (if (!report.optBoolean("diagnosticFpsReached")) "\n尚未确认达到请求帧率（含测量不足5秒）。" else "")
+                if (report.has("saveError")) cameraStatus.append("\n报告保存失败：${report.optString("saveError")}")
+                cameraHistory[mode] = "${mode.label}\n$result"
+                cameraHistoryStatus.text = cameraHistory.values.joinToString("\n\n")
+                if (run != null && comparison === run && run.accept(report)) {
+                    // The previous owner has closed every resource before onDone. Allow device close to settle.
+                    cameraSequenceHandler.postDelayed({ startComparisonStep(run) }, 750)
+                }
+                updateButtons(); updateReportCount()
+            }
+        }, mode, run?.id, run?.cameraId).also { it.start() }
         updateButtons()
     }
 
     private fun startAudio(playbackOnly: Boolean = false) {
-        if (audioProbe != null) return
+        if (audioProbe != null || comparison != null || comparisonStarting) return
         audioButton.isEnabled = false; auditionButton.isEnabled = false
         audioProbe = AudioProbe(this, store, { audioStatus.text = it }, { report ->
             if (!isDestroyed) {
@@ -306,7 +402,9 @@ class MainActivity : Activity() {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
         if (requestCode == 10) {
             val action = permissionAction; permissionAction = null
-            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) action?.invoke()
+            if (grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }) {
+                if (resumed) action?.invoke() else pendingGrantedAction = action
+            }
             else Toast.makeText(this, "需要对应权限才能采集；可在系统设置中授权后重试。", Toast.LENGTH_LONG).show()
         }
     }
@@ -336,8 +434,17 @@ class MainActivity : Activity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        resumed = true
+        val action = pendingGrantedAction; pendingGrantedAction = null
+        action?.invoke()
+    }
+
     override fun onPause() {
+        resumed = false
         super.onPause()
+        if (comparisonStarting || comparison != null) cancelComparison("App 离开前台，排查已停止")
         cameraProbe?.stop("App 离开前台，录像已停止")
         audioProbe?.cancel()
         // A queued Future cancelled before execution never runs its finally block.
@@ -350,13 +457,28 @@ class MainActivity : Activity() {
         }
         stopHost()
     }
-    override fun onDestroy() { jobs.shutdownNow(); super.onDestroy() }
+    override fun onDestroy() {
+        permissionAction = null; pendingGrantedAction = null
+        cameraSequenceHandler.removeCallbacksAndMessages(null)
+        jobs.shutdownNow(); super.onDestroy()
+    }
 
     private fun updateButtons() {
-        val canExport = cameraProbe == null && audioProbe == null && !syncBusy && !exportBusy
+        val running = comparisonStarting || comparison != null
+        val canExport = cameraProbe == null && audioProbe == null && !syncBusy && !exportBusy && !running
         if (::exportButton.isInitialized) exportButton.isEnabled = canExport
         if (::logExportButton.isInitialized) logExportButton.isEnabled = canExport
-        if (::cameraMode.isInitialized) cameraMode.isEnabled = cameraProbe == null && !exportBusy
+        if (::cameraMode.isInitialized) cameraMode.isEnabled = cameraProbe == null && !exportBusy && !running
+        if (::comparisonButton.isInitialized) {
+            comparisonButton.text = if (running) "停止自动排查" else "一键排查60帧（约1分钟）"
+            comparisonButton.isEnabled = running || canExport
+        }
+        if (::cameraButton.isInitialized) cameraButton.isEnabled = !running && !exportBusy
+        if (::audioButton.isInitialized) audioButton.isEnabled = audioProbe == null && !running && !exportBusy
+        if (::auditionButton.isInitialized) auditionButton.isEnabled = audioProbe == null && !running && !exportBusy
+        if (::syncButton.isInitialized) syncButton.isEnabled = !syncBusy && !running && !exportBusy
+        if (::hostButton.isInitialized) hostButton.isEnabled = !running && !exportBusy
+        if (::detectButton.isInitialized) detectButton.isEnabled = !running && !exportBusy
     }
     private fun updateReportCount() { reportStatus.text = "已保存 ${store.reportCount()} 份诊断记录；所有文件保存在本机。" }
     private fun ui(block: () -> Unit) { runOnUiThread { if (!isDestroyed) block() } }

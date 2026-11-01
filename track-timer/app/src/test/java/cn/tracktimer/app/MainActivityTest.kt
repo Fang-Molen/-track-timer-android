@@ -127,6 +127,65 @@ class MainActivityTest {
             assertTrue(views.filterIsInstance<TextView>().any { it.text.toString().startsWith("校准已中断") })
         } finally { controller.pause().stop().destroy() }
     }
+    @Test fun automaticComparisonRequestsCameraOnlyAndPermissionDenialRestoresControls() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val views = descendants(activity.window.decorView)
+            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            start.performClick()
+            val request = shadowOf(activity).lastRequestedPermission
+            assertArrayEquals(arrayOf(Manifest.permission.CAMERA), request.requestedPermissions)
+            activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.CAMERA), intArrayOf(PackageManager.PERMISSION_DENIED))
+            assertTrue(start.isEnabled)
+            assertTrue(views.filterIsInstance<Button>().first { it.text == "仅导出日志 ZIP（小文件）" }.isEnabled)
+        } finally { controller.pause().stop().destroy() }
+    }
+    @Test fun pureCaptureSelectionDoesNotPromiseAVideoFile() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val views = descendants(activity.window.decorView)
+            views.filterIsInstance<Spinner>().single().setSelection(CameraTestMode.HD60_CAPTURE_ONLY.ordinal)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("不保存视频") })
+            assertNull(shadowOf(activity).lastRequestedPermission)
+        } finally { controller.pause().stop().destroy() }
+    }
+    @Test fun permissionGrantedWhilePausedDoesNotStartAnAutomaticCameraRun() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val start = descendants(activity.window.decorView).filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            start.performClick()
+            val request = shadowOf(activity).lastRequestedPermission
+            controller.pause()
+            activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.CAMERA), intArrayOf(PackageManager.PERMISSION_GRANTED))
+            assertEquals("一键排查60帧（约1分钟）", start.text.toString())
+            assertTrue(start.isEnabled)
+        } finally { controller.stop().destroy() }
+    }
+    @Test fun automaticRunWithNoCameraRestoresControlsAndSavesItsFailure() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            shadowOf(activity).grantPermissions(Manifest.permission.CAMERA)
+            val views = descendants(activity.window.decorView)
+            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            start.performClick()
+            assertFalse(views.filterIsInstance<Button>().first { it.text == "只试听发令音（不录音）" }.isEnabled)
+            val deadline = System.nanoTime() + 3_000_000_000L
+            while (start.text != "一键排查60帧（约1分钟）" && System.nanoTime() < deadline) {
+                shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(5)
+            }
+            assertTrue(start.isEnabled)
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("排查未能开始") })
+            assertTrue(views.filterIsInstance<Button>().first { it.text == "仅导出日志 ZIP（小文件）" }.isEnabled)
+            assertTrue(ReportStore(activity).directory.listFiles().orEmpty().any { file ->
+                file.name.startsWith("comparison_") && org.json.JSONObject(file.readText()).has("preparationError")
+            })
+        } finally { controller.pause().stop().destroy() }
+    }
     private fun descendants(view: View): List<View> = listOf(view) +
         if (view is ViewGroup) (0 until view.childCount).flatMap { descendants(view.getChildAt(it)) } else emptyList()
 }
