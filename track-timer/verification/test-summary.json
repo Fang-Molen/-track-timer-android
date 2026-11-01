@@ -1,0 +1,42 @@
+{
+  "total": 27,
+  "failures": 0,
+  "suites": [
+    {
+      "suite": "cn.tracktimer.core.ResourceGateTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.SyncProtocolTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.ToneDetectorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.ClockSyncTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.FrameAnalysisTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.app.MainActivityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    }
+  ]
+}

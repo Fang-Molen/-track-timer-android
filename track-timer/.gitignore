@@ -1,0 +1,12 @@
+.gradle/
+**/build/
+local.properties
+.superpowers/
+*.jks
+*.keystore
+.idea/
+captures/
+releases/
+verification/*.png
+verification/*-ui.xml
+
