@@ -87,7 +87,7 @@ class MainActivity : Activity() {
         }
         page.addView(text("TRACK TIMER  /  DEVICE LAB", 11, green, true))
         page.addView(text("跑道计时", 32, ink, true), spaced(8))
-        page.addView(text("两台安卓 · 60 fps · 设备验证版 0.1", 14, muted), spaced(4))
+        page.addView(text("双机采集诊断 · ${BuildConfig.VERSION_NAME}", 14, muted), spaced(4))
         val intro = card(page)
         intro.addView(text("先把时间测准", 22, ink, true))
         intro.addView(text("检查相机、录音与双机时差，为训练计时做准备。当前版本只生成诊断报告，尚不生成跑步成绩。", 14, muted), spaced(8))
@@ -237,6 +237,7 @@ class MainActivity : Activity() {
                 cameraStatus.text = if (!report.isNull("error")) "录像测试未完成：${report.optString("error")}"
                 else "采集帧率：${number(report, "captureFps")} fps\n编码视频帧率：${number(report, "encodedFps")} fps\n" +
                     "最大采集间隔：${ms(report.optLong("maxFrameGapNs"))} ms\n" +
+                    (if (!report.optBoolean("requestedFpsAchieved")) "未达到请求的 ${report.optInt("requestedFps")} fps；请导出报告排查。\n" else "") +
                     "视频已保存；采集与编码时间映射仍待标定。"
                 if (report.has("saveError")) cameraStatus.append("\n报告保存失败：${report.optString("saveError")}")
                 updateButtons(); updateReportCount()
@@ -254,7 +255,7 @@ class MainActivity : Activity() {
                 audioStatus.text = when {
                     report.optBoolean("cancelled") -> "声音测试已中断，已保留诊断数据。"
                     report.has("error") -> "声音测试未完成：${report.optString("error")}"
-                    playbackOnly -> "已提交试听；系统播放进度：${report.optJSONObject("playback")?.optLong("playbackHeadFrames") ?: 0} 帧。\n请以实际听到声音为准；无声时导出诊断报告。"
+                    playbackOnly -> "系统已报告音频播放进展。\n请确认是否听到“滴”声；无声时导出诊断报告。"
                     else -> "硬件时间戳样本：${report.optInt("hardwareTimestampCount")}\n" +
                         (if (report.isNull("candidateSample")) "未找到测试音候选，请检查音量或环境噪声。" else "检测到测试音候选；尚未验证为准确发令时刻。")
                 }

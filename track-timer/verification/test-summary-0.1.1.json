@@ -1,0 +1,74 @@
+{
+  "version": "0.1.1-probe",
+  "testCount": 36,
+  "suites": [
+    {
+      "suite": "cn.tracktimer.core.ClockSyncTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.FrameAnalysisTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.ResourceGateTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.SyncProtocolTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.core.ToneDetectorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.app.CameraSessionSetupTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.app.MainActivityTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.app.TestTonePlayerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "lintIssues": [
+    {
+      "id": "LockedOrientationActivity",
+      "severity": "Warning",
+      "message": "Expecting `android:screenOrientation=\"unspecified\"` or `\"fullSensor\"` for this activity so the user can use the application in any orientation and provide a great experience on Chrome OS devices"
+    },
+    {
+      "id": "DiscouragedApi",
+      "severity": "Warning",
+      "message": "Should not restrict activity to fixed orientation. This may not be suitable for different form factors, causing the app to be letterboxed."
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning",
+      "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
+    }
+  ],
+  "apkSha256": "d7c1c067dc8af2aebb8ea7732dfde1afa9d516b2bcefa6a493cfed66d0ba21d4",
+  "physicalDeviceRetest": "pending",
+  "precisionVerified": false
+}

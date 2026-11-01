@@ -9,4 +9,4 @@ captures/
 releases/
 verification/*.png
 verification/*-ui.xml
-
+.kotlin/

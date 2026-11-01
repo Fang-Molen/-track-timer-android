@@ -3,6 +3,7 @@ package cn.tracktimer.app
 import android.Manifest
 import android.content.pm.PackageManager
 import android.media.AudioManager
+import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
@@ -43,6 +44,24 @@ class MainActivityTest {
             activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.CAMERA), intArrayOf(PackageManager.PERMISSION_DENIED))
             assertEquals("录制 10 秒视频", button.text.toString())
             assertTrue(button.isEnabled)
+        } finally { controller.pause().stop().destroy() }
+    }
+    @Test fun auditionNeedsNoMicrophonePermissionAndRestoresControlsOnMutedMedia() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            activity.getSystemService(AudioManager::class.java).setStreamVolume(AudioManager.STREAM_MUSIC, 0, 0)
+            val views = descendants(activity.window.decorView)
+            val audition = views.filterIsInstance<Button>().first { it.text == "只试听发令音（不录音）" }
+            audition.performClick()
+            assertNull(shadowOf(activity).lastRequestedPermission)
+            val deadline = System.nanoTime() + 3_000_000_000L
+            while (!audition.isEnabled && System.nanoTime() < deadline) {
+                shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(5)
+            }
+            assertTrue(audition.isEnabled)
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("媒体音量为零") })
+            assertTrue(views.filterIsInstance<Button>().first { it.text == "导出诊断报告 ZIP" }.isEnabled)
         } finally { controller.pause().stop().destroy() }
     }
     @Test fun leavingForegroundStopsHostAndAllowsRestart() {

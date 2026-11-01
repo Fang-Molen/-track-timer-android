@@ -30,11 +30,12 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private var recorder: MediaRecorder? = null
     private var preview: Surface? = null
     private var recording = false
-    private var finished = false
+    @Volatile private var finished = false
     private var config: CameraConfig? = null
     private var video: File? = null
     private var startedNs = 0L
     private var failedCaptures = 0
+    private var sessionParametersSubmitted = false
     private val frames = JSONArray()
     private val times = ArrayList<Long>()
     private val autoStop = Runnable { finish(null) }
@@ -79,16 +80,13 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     @Suppress("DEPRECATION")
     private fun configure(device: CameraDevice, c: CameraConfig, r: MediaRecorder) {
         try {
-            device.createCaptureSession(listOf(preview!!, r.surface), object : CameraCaptureSession.StateCallback() {
+            val outputs = listOf(preview!!, r.surface)
+            val request = CameraSessionSetup.recordRequest(device, c, outputs)
+            sessionParametersSubmitted = CameraSessionSetup.open(device, outputs, request, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     if (finished) { s.close(); return }
                     session = s
                     try {
-                        val request = device.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                            addTarget(preview!!); addTarget(r.surface)
-                            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, c.range)
-                            set(CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE, CaptureRequest.CONTROL_VIDEO_STABILIZATION_MODE_OFF)
-                        }.build()
                         s.setRepeatingRequest(request, object : CameraCaptureSession.CaptureCallback() {
                             override fun onCaptureCompleted(s: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                                 if (!recording || finished) return
@@ -98,6 +96,11 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                                     .put("sensorNs", sensor ?: JSONObject.NULL)
                                     .put("callbackElapsedNs", SystemClock.elapsedRealtimeNanos())
                                     .put("exposureNs", result[CaptureResult.SENSOR_EXPOSURE_TIME] ?: JSONObject.NULL)
+                                    .put("frameDurationNs", result[CaptureResult.SENSOR_FRAME_DURATION] ?: JSONObject.NULL)
+                                    .put("aeTargetFpsRange", result[CaptureResult.CONTROL_AE_TARGET_FPS_RANGE]?.toString() ?: JSONObject.NULL)
+                                    .put("aeMode", result[CaptureResult.CONTROL_AE_MODE] ?: JSONObject.NULL)
+                                    .put("controlMode", result[CaptureResult.CONTROL_MODE] ?: JSONObject.NULL)
+                                    .put("sceneMode", result[CaptureResult.CONTROL_SCENE_MODE] ?: JSONObject.NULL)
                                     .put("rollingShutterSkewNs", result[CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW] ?: JSONObject.NULL))
                                 if (frames.length() == 1) status("正在录制 10 秒 · 请求 ${c.targetFps} fps\n已收到真实相机帧；可同时测试发令音。")
                             }
@@ -130,10 +133,16 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             .put("size", config?.size?.toString()).put("cameraId", config?.id)
             .put("cameraClockRealtime", config?.realtime ?: false)
             .put("recordStartCallbackElapsedNs", startedNs).put("failedCaptures", failedCaptures)
+            .put("requestedAeFpsRange", config?.range?.toString() ?: JSONObject.NULL)
+            .put("sessionParametersSubmitted", sessionParametersSubmitted)
+            .put("fpsIsSessionKey", config?.fpsIsSessionKey ?: false)
+            .put("previewMinFrameDurationNs", config?.previewMinFrameDurationNs ?: JSONObject.NULL)
+            .put("recorderMinFrameDurationNs", config?.recorderMinFrameDurationNs ?: JSONObject.NULL)
             .put("frames", frames).put("precisionVerified", false)
         try {
             val stats = FrameAnalysis.analyze(times, config?.targetFps ?: 60)
             report.put("captureFps", stats.measuredFps ?: JSONObject.NULL)
+                .put("requestedFpsAchieved", stats.measuredFps?.let { it >= (config?.targetFps ?: 60) * .9 } ?: false)
                 .put("maxFrameGapNs", stats.maxGapNs).put("p95FrameGapNs", stats.p95GapNs)
                 .put("estimatedMissingCaptureFrames", stats.estimatedMissingFrames)
         } catch (e: Exception) { report.put("timestampError", e.message) }

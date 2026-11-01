@@ -1,8 +1,10 @@
 package cn.tracktimer.app
 
 import android.content.Context
+import android.graphics.SurfaceTexture
 import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
+import android.hardware.camera2.CaptureRequest
 import android.media.AudioManager
 import android.media.MediaCodecList
 import android.media.MediaRecorder
@@ -13,7 +15,9 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 data class CameraConfig(val id: String, val size: Size, val range: Range<Int>,
-    val targetFps: Int, val realtime: Boolean, val sensorOrientation: Int)
+    val targetFps: Int, val realtime: Boolean, val sensorOrientation: Int,
+    val recorderMinFrameDurationNs: Long = 0, val previewMinFrameDurationNs: Long = 0,
+    val fpsIsSessionKey: Boolean = false)
 
 object DeviceReport {
     fun cameraConfig(context: Context): CameraConfig {
@@ -22,19 +26,23 @@ object DeviceReport {
             val c = manager.getCameraCharacteristics(id)
             if (c[CameraCharacteristics.LENS_FACING] != CameraCharacteristics.LENS_FACING_BACK) return@mapNotNull null
             val map = c[CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP] ?: return@mapNotNull null
+            val previewSizes = map.getOutputSizes(SurfaceTexture::class.java)?.toSet().orEmpty()
             val sizes = map.getOutputSizes(MediaRecorder::class.java)?.toList().orEmpty()
-                .filter { it.width <= 1920 && it.height <= 1080 }
+                .filter { it.width <= 1920 && it.height <= 1080 && it in previewSizes }
             if (sizes.isEmpty()) return@mapNotNull null
             val ranges = c[CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES]?.toList().orEmpty()
             val options = listOf(60, 30).flatMap { fps ->
                 ranges.filter { it.contains(fps) && it.upper <= fps }.flatMap { range ->
                     sizes.filter { size ->
-                        val minNs = map.getOutputMinFrameDuration(MediaRecorder::class.java, size)
-                        minNs == 0L || minNs <= 1_000_000_000L / fps + 100_000
+                        supportsFrameRate(fps, map.getOutputMinFrameDuration(MediaRecorder::class.java, size),
+                            map.getOutputMinFrameDuration(SurfaceTexture::class.java, size))
                     }.map { size ->
                         CameraConfig(id, size, range, fps,
                             c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE] == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME,
-                            c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 0)
+                            c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 0,
+                            map.getOutputMinFrameDuration(MediaRecorder::class.java, size),
+                            map.getOutputMinFrameDuration(SurfaceTexture::class.java, size),
+                            Build.VERSION.SDK_INT >= 28 && c.availableSessionKeys?.contains(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE) == true)
                     }
                 }
             }
@@ -46,6 +54,12 @@ object DeviceReport {
             ?: error("未找到可用的后置普通录像配置；请先导出设备报告。")
     }
 
+    fun supportsFrameRate(fps: Int, recorderMinNs: Long, previewMinNs: Long): Boolean {
+        require(fps > 0 && recorderMinNs >= 0 && previewMinNs >= 0)
+        val maxPeriod = 1_000_000_000L / fps + 100_000
+        return listOf(recorderMinNs, previewMinNs).all { it == 0L || it <= maxPeriod }
+    }
+
     fun collect(context: Context): JSONObject {
         val manager = context.getSystemService(CameraManager::class.java)
         val cameras = JSONArray()
@@ -53,9 +67,14 @@ object DeviceReport {
             val c = manager.getCameraCharacteristics(id)
             val map = c[CameraCharacteristics.SCALER_STREAM_CONFIGURATION_MAP]
             val formats = JSONArray()
+            val previewFormats = JSONArray()
             map?.getOutputSizes(MediaRecorder::class.java)?.forEach { size ->
                 formats.put(JSONObject().put("width", size.width).put("height", size.height)
                     .put("minFrameDurationNs", map.getOutputMinFrameDuration(MediaRecorder::class.java, size)))
+            }
+            map?.getOutputSizes(SurfaceTexture::class.java)?.forEach { size ->
+                previewFormats.put(JSONObject().put("width", size.width).put("height", size.height)
+                    .put("minFrameDurationNs", map.getOutputMinFrameDuration(SurfaceTexture::class.java, size)))
             }
             val highSpeed = JSONArray()
             if (c[CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES]?.contains(
@@ -70,7 +89,9 @@ object DeviceReport {
                 .put("timestampSource", c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE])
                 .put("orientation", c[CameraCharacteristics.SENSOR_ORIENTATION])
                 .put("fpsRanges", JSONArray(c[CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES]?.map { it.toString() }.orEmpty()))
-                .put("recordingSizes", formats).put("highSpeedModes", highSpeed))
+                .put("recordingSizes", formats).put("previewSizes", previewFormats).put("highSpeedModes", highSpeed)
+                .put("availableSessionKeys", if (Build.VERSION.SDK_INT >= 28)
+                    JSONArray(c.availableSessionKeys?.map { it.name }.orEmpty()) else JSONArray()))
         }
         val audio = context.getSystemService(AudioManager::class.java)
         val devices = JSONArray(audio.getDevices(AudioManager.GET_DEVICES_INPUTS or AudioManager.GET_DEVICES_OUTPUTS).map {
@@ -86,7 +107,10 @@ object DeviceReport {
                 it.isEncoder && it.supportedTypes.any { type -> type.equals("video/avc", ignoreCase = true) }
             }.map { it.name }))
         choice.onSuccess { report.put("selectedCamera", it.id).put("selectedSize", it.size.toString())
-            .put("requestedFps", it.targetFps).put("cameraClockRealtime", it.realtime) }
+            .put("requestedFps", it.targetFps).put("cameraClockRealtime", it.realtime)
+            .put("requestedAeFpsRange", it.range.toString()).put("fpsIsSessionKey", it.fpsIsSessionKey)
+            .put("recorderMinFrameDurationNs", it.recorderMinFrameDurationNs)
+            .put("previewMinFrameDurationNs", it.previewMinFrameDurationNs) }
             .onFailure { report.put("cameraSelectionError", it.message) }
         return report
     }

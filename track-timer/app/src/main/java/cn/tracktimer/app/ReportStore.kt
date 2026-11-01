@@ -16,7 +16,7 @@ class ReportStore(context: Context) {
     fun newFile(prefix: String, extension: String): File = File(directory, "${prefix}_${UUID.randomUUID()}.$extension")
 
     @Synchronized fun saveJson(prefix: String, json: JSONObject): File {
-        json.put("schemaVersion", 1).put("appVersion", "0.1.0-probe")
+        json.put("schemaVersion", 1).put("appVersion", BuildConfig.VERSION_NAME)
             .put("clockSession", AppSession.id).put("createdAtUnixMs", System.currentTimeMillis())
         val file = newFile(prefix, "json")
         val atomic = AtomicFile(file)
@@ -32,7 +32,7 @@ class ReportStore(context: Context) {
         }.sortedBy { it.name }
         ZipOutputStream(output).use { zip ->
             zip.putNextEntry(ZipEntry("说明.txt"))
-            zip.write("跑道计时 0.1 设备验证报告\n这是设备能力与采集诊断，不是已标定的田径成绩。\n时间单位以字段名为准；所有 *Ns 时间属于报告内标识的单调时钟。\n音频含麦克风原始录音，视频含测试画面。\n".toByteArray())
+            zip.write("跑道计时 ${BuildConfig.VERSION_NAME} 设备验证报告\n这是设备能力与采集诊断，不是已标定的田径成绩。\n时间单位以字段名为准；时间戳属于报告内标识的时钟。播放输出时间戳标记为 MONOTONIC，不能直接与 BOOTTIME 采集时间相减。\n音频含麦克风原始录音，视频含测试画面。升级前的报告仍保留各自版本。\n".toByteArray())
             zip.closeEntry()
             files.forEach { file ->
                 zip.putNextEntry(ZipEntry(file.name)); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()
