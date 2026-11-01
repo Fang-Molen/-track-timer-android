@@ -3,13 +3,13 @@
 指定仓库：https://github.com/Fang-Molen/-track-timer-android
 注意仓库名最前面有一个连字符；不要新建其他仓库，不要覆盖已有内容。
 
-先读取根目录 HANDOFF.md，再进入 track-timer/ 阅读 README.md、docs/superpowers/specs/2026-11-01-track-timer.md 和 verification/VALIDATION-0.1.1.md。如果新任务还没连接这个私有仓库，请先解决访问；不要假设上个任务的 /workspace 文件会自动继承。
+先读取根目录 HANDOFF.md，再进入 track-timer/ 阅读 README.md、docs/superpowers/specs/2026-11-01-track-timer.md 和 verification/VALIDATION-0.1.2.md。如果新任务还没连接该仓库，请先解决访问；不要假设上个任务的 /workspace 文件会自动继承。
 
 我的目标：两台安卓为主，可增加手机；训练用；30/60/100/200/400 米发令起跑；单人和多人分道；遮挡可记并列；后续增加行进间。手机只有 60 fps，具体型号暂不确定。清晰无遮挡时希望与可靠电计时相差不超过 0.05 秒，但这只是研发目标，尚未验证。
 
-已完成阶段 A 的 Kotlin 原生设备验证 APK 0.1.1-probe（deliverables/track-timer-0.1.1-probe.apk）：设备能力检测、48 次 TCP 双机校准、10 秒视频及相机时间戳、5 秒录音与测试音候选、JSON/音视频 ZIP 导出。当前还不能输出训练成绩。原源码提交 2fbad86c1518068ccf7a72abc6a61fd3e02df0a6，导入在本仓库 track-timer/。
+已完成阶段 A 的 Kotlin 原生设备验证 APK 0.1.2-probe（deliverables/track-timer-0.1.2-probe.apk）：设备能力检测、48 次 TCP 双机校准、10 秒视频及相机时间戳、5 秒录音与测试音候选、JSON/音视频 ZIP 导出。当前还不能输出训练成绩。原源码提交 2fbad86c1518068ccf7a72abc6a61fd3e02df0a6，导入在本仓库 track-timer/。
 
-0.1.1 验证有 23 项核心测试和 16 项 Robolectric 框架测试通过。0.1.0 的 V2324HA 真机反馈：无可听提示音，实际30fps，对时成功；0.1.1 已修订媒体播放及会话初始帧率配置并增加诊断，等待新版真机复测；没有参考电计时验证。JDK 21、Gradle 8.11.1、Kotlin 2.1.10、AGP 8.9.1、SDK 35、min SDK 26。进入项目后运行 ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug。
+0.1.2 验证有 23 项核心测试和 30 项 Robolectric 框架测试通过。0.1.0 的 V2324HA 真机反馈：无可听提示音，实际30fps，对时成功；0.1.1复测：实际30fps，最大媒体音量有一次声音候选。0.1.2增加1080p60、仅录像和可选受限高速120fps模式，以及小日志导出，等待新模式真机复测；没有参考电计时验证。JDK 21、Gradle 8.11.1、Kotlin 2.1.10、AGP 8.9.1、SDK 35、min SDK 26。进入项目后运行 ./gradlew :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug。
 
 设计要点：终点先录像，起点记录实际声音事件，使用单调时钟校准换算；网络消息的到达时间不能作为发令时间。相机采集时间和编码视频 PTS 的精确映射、可信声音事件、有效漂移模型仍未完成。当前网络代码只做校准，尚无训练发令事件的可靠补传协议。60 fps 不等于总误差 16.7 ms，更不代表已经达到 0.05 秒精度。
 

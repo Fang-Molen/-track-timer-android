@@ -94,5 +94,6 @@
   ],
   "apkSha256": "b042ac008eeb898abe97fddf1f3c721aea2f6925901e7a99e55e078f35c1a24e",
   "physicalDeviceRetest": "pending",
-  "precisionVerified": false
+  "precisionVerified": false,
+  "sourceCommit": "463c388aebfed7e9c296ffb01d7fe0d22f065032"
 }
