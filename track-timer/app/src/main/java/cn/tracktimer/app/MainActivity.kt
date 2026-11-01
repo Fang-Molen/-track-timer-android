@@ -6,6 +6,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Color
+import android.media.AudioManager
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
@@ -60,12 +61,14 @@ class MainActivity : Activity() {
     private lateinit var syncButton: Button
     private lateinit var cameraButton: Button
     private lateinit var audioButton: Button
+    private lateinit var auditionButton: Button
     private lateinit var exportButton: Button
     private lateinit var preview: TextureView
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
         store = ReportStore(this)
+        volumeControlStream = AudioManager.STREAM_MUSIC
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         @Suppress("DEPRECATION")
         window.decorView.systemUiVisibility = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
@@ -142,8 +145,11 @@ class MainActivity : Activity() {
             if (cameraProbe != null) { cameraButton.isEnabled = false; cameraProbe?.stop() }
             else withPermission(Manifest.permission.CAMERA) { startCamera() }
         }
-        audioStatus = text("录音 5 秒，其间播放短提示音；请保持安静。", 13, muted)
+        audioStatus = text("先只试听，确认能听到声音，再测试麦克风。音量键调整媒体音量。", 13, muted)
         capture.addView(audioStatus, spaced(18))
+        auditionButton = button("只试听发令音（不录音）")
+        capture.addView(auditionButton, spaced(10))
+        auditionButton.setOnClickListener { startAudio(playbackOnly = true) }
         audioButton = button("测试发令音与麦克风")
         capture.addView(audioButton, spaced(10))
         audioButton.setOnClickListener { withPermission(Manifest.permission.RECORD_AUDIO) { startAudio() } }
@@ -239,22 +245,24 @@ class MainActivity : Activity() {
         updateButtons()
     }
 
-    private fun startAudio() {
+    private fun startAudio(playbackOnly: Boolean = false) {
         if (audioProbe != null) return
-        audioButton.isEnabled = false
+        audioButton.isEnabled = false; auditionButton.isEnabled = false
         audioProbe = AudioProbe(this, store, { audioStatus.text = it }, { report ->
             if (!isDestroyed) {
-                audioProbe = null; audioButton.isEnabled = true
+                audioProbe = null; audioButton.isEnabled = true; auditionButton.isEnabled = true
                 audioStatus.text = when {
-                    report.has("error") -> "录音测试失败：${report.optString("error")}"
-                    report.optBoolean("cancelled") -> "录音已中断，已保留采集到的诊断数据。"
+                    report.optBoolean("cancelled") -> "声音测试已中断，已保留诊断数据。"
+                    report.has("error") -> "声音测试未完成：${report.optString("error")}"
+                    playbackOnly -> "已提交试听；系统播放进度：${report.optJSONObject("playback")?.optLong("playbackHeadFrames") ?: 0} 帧。\n请以实际听到声音为准；无声时导出诊断报告。"
                     else -> "硬件时间戳样本：${report.optInt("hardwareTimestampCount")}\n" +
                         (if (report.isNull("candidateSample")) "未找到测试音候选，请检查音量或环境噪声。" else "检测到测试音候选；尚未验证为准确发令时刻。")
                 }
+                if (report.has("audioSaveError")) audioStatus.append("\n录音文件保存失败：${report.optString("audioSaveError")}")
                 if (report.has("saveError")) audioStatus.append("\n报告保存失败：${report.optString("saveError")}")
                 updateButtons(); updateReportCount()
             }
-        }).also { it.start() }
+        }, playbackOnly).also { it.start() }
         updateButtons()
     }
 
