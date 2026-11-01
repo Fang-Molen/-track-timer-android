@@ -15,7 +15,7 @@
 
 ## 二、当前交付到底做到哪里
 
-已完成 **阶段 A：原生 Android 设备验证版 0.1**，包名 `cn.tracktimer.app`，版本 `0.1.0-probe`。当前不生成运动员的跑步成绩。
+已完成 **阶段 A：原生 Android 设备验证版 0.1.1**，包名 `cn.tracktimer.app`，版本 `0.1.1-probe`。当前不生成运动员的跑步成绩。
 
 已实现：
 
@@ -69,7 +69,7 @@ Android 端以 `SystemClock.elapsedRealtimeNanos()` 为校准时钟；音频采�
 
 本仓库 Android 项目位于 `track-timer/`。原开发目录是 `/workspace/track-timer`；新任务不保证继承该目录，请先检查实际工作区。
 
-原开发 Git 提交：`2fbad86c1518068ccf7a72abc6a61fd3e02df0a6`，分支 `feat/device-validation`。目标仓库中源码以该提交的已跟踪文件逐字节导入，交接文档另存根目录。
+原开发 Git 提交：`2fbad86c1518068ccf7a72abc6a61fd3e02df0a6`，分支 `feat/device-validation`。最初源码以该提交的已跟踪文件逐字节导入；之后的修订以本仓库 main 历史为准，交接文档另存根目录。
 
 技术栈：Kotlin 2.1.10、AGP 8.9.1、Gradle Wrapper 8.11.1、JDK 21（JVM target 17）、compile/target SDK 35、min SDK 26、Android 原生 Views、Camera2、MediaRecorder、AudioRecord/AudioTrack、JUnit 4.13.2、Robolectric 4.14.1。
 
@@ -84,7 +84,9 @@ Android 端以 `SystemClock.elapsedRealtimeNanos()` 为校准时钟；音频采�
 | `core/.../ResourceGate.kt` | 取消后迟到的资源关闭 |
 | `app/.../DeviceReport.kt` | 真正可用的相机/音频能力枚举 |
 | `app/.../CameraProbe.kt` | 视频、相机元数据与编码帧检查 |
-| `app/.../AudioProbe.kt` | 原始录音、测试音、时间戳及 WAV |
+| `app/.../AudioProbe.kt` | 原始录音、独立试听、时间戳及 WAV |
+| `app/.../TestTonePlayer.kt` | 媒体通道短音、音频焦点、音量和播放进度诊断 |
+| `app/.../CameraSessionSetup.kt` | API28+ 会话初始帧率参数及 API26/27 兼容路径 |
 | `app/.../ReportStore.kt` | 原子 JSON 写入与报告 ZIP |
 | `app/.../MainActivity.kt` | 中文界面、权限、生命周期与任务状态 |
 
@@ -102,9 +104,9 @@ APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。
 
 ## 五、验证记录与已修复问题
 
-上次完整验证结果：23 项核心测试 + 4 项 Android 框架测试，共 27 项通过，0 失败；APK 构建和 lint 通过，lint 保留 3 条建议；APK v2 调试签名验证通过。
+本次 0.1.1 完整验证结果：23 项核心测试 + 16 项 Android 框架测试，共 39 项通过，0 失败；APK 构建和 lint 通过，lint 保留 3 条建议；APK v2 调试签名验证通过。
 
-证据在 `track-timer/verification/`。这是已有测试记录，接手后发生代码修改仍需重跑适用检查；本次交接不会把历史测试说成刚刚重跑。
+最新证据在 `track-timer/verification/VALIDATION-0.1.1.md` 及对应 JSON；不带版本后缀的验证文件是 0.1.0 历史记录。接手后发生代码修改仍需重跑适用检查。
 
 已修复且不可回退的问题：
 
@@ -114,13 +116,13 @@ APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。
 - TextureView 设置背景导致启动崩溃：背景属于外层容器。
 - Future 在排队时被取消而不执行 finally，导致按钮永远禁用：离开前台主动复位并过滤旧任务回调。
 
-未完成的验证：没有用户真机测试，也没有独立参考电计时对照。API 35 软件模拟器未在验证窗口内完成启动，因此没有 APK 整机运行验证；4 项界面测试使用 Robolectric API 28，不能代替真机。
+已收到 0.1.0 的 vivo V2324HA / Android15 真机 ZIP：两段实际约30fps视频、四次未检测到提示音的录音、一次48组成功校准（网络不确定度约±3.04ms）。用户复测仍听不到声音、录像仍30fps。0.1.1 的可听声音和实际帧率尚待复测；始终没有独立参考电计时对照。Robolectric 框架测试覆盖 API28 和旧相机会话 API26，不能代替真机。
 
-已知待完善项：录音正常取消会保存已有数据；硬件读取异常时可能只保存错误报告，异常前部分 PCM/时间戳仍可能丢失。竖屏/平板适配、多语言和可回收存储空间利用未优化。
+0.1.1 已把部分 PCM/时间戳保存在录音 finally 中，保留读取/播放异常前的诊断。竖屏/平板适配、多语言和可回收存储空间利用仍未优化。
 
 ## 六、下一阶段建议顺序
 
-1. 先确认能读取现有项目，检查构建及 27 项测试；不要重复实现已有模块。
+1. 先确认能读取现有项目，检查构建及 39 项测试；不要重复实现已有模块。
 2. 获取用户两台手机的设备/相机/音频/校准报告，验证 60 fps、时间戳来源和录音行为。没有报告时，可以继续开发与硬件无关的轮次、事件和复核模块，但不得宣称精度已达标。
 3. 完善采集时间到编码帧 PTS 的对应关系和声音事件的有效性判定；失败必须保持待确认。
 4. 建立训练会话、轮次、道次与运动员、起终点事件、校准版本、原始证据和质量状态的模型。
@@ -140,12 +142,23 @@ APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。
 
 仓库目录：
 
+- `deliverables/track-timer-0.1.1-probe.apk`：最新可安装 APK，签名与 0.1.0 相同，可覆盖升级。
 - 根 `README.md`：用户原文件，保持不变。
 - `track-timer/`：完整 Android 项目。
 - `HANDOFF.md`：本文。
 - `START_NEW_CODEX_TASK.txt`：可复制到新任务的指令。
-- `deliverables/track-timer-handoff-2026-11-01.zip`：交接说明、完整源码 ZIP、Git 历史 bundle、设备验证 APK 和校验清单。
+- `deliverables/track-timer-handoff-2026-11-01.zip`：历史 0.1.0 交接包，不含 0.1.1 修订；包含当时的交接说明、完整源码 ZIP、Git 历史 bundle、设备验证 APK 和校验清单。
 
 交接包不包含本机 SDK/JDK 缓存、GitHub 凭据或调试签名私钥。源码 ZIP 即使没有 Git 历史也可构建；需要恢复原历史可在解压 bundle 后执行 `git clone --branch feat/device-validation track-timer.git.bundle track-timer-history`。
 
 用户已明确希望继续完成实际训练计时功能。优先复用现有实现、坦诚说明完成边界，并提供真正可访问的 GitHub 文件入口。
+
+## 八、0.1.1 修订的已知边界
+
+旧播放代码的 USAGE_ASSISTANCE_SONIFICATION 对应系统提示音音量，日志却记录媒体音量；新版统一为 USAGE_MEDIA，音量键控制媒体音量，申请临时焦点，提供不使用麦克风的独立试听。日志包含实际媒体音量/静音、音频模式、焦点、输出设备、播放帧进度和输出时间戳。播放进度不等于实际可听，输出时间戳 MONOTONIC 不能直接与 BOOTTIME 采集时间相减。
+
+相机在 API28+ 创建会话时提前提交帧率请求，并同时检查预览和编码输出帧时长；保存每帧实际 AE 范围、帧时长、曝光与控制模式。该修改遵循平台 API，但在 V2324HA 上是否解决30fps仍需新版报告，不能声称根因或效果已由硬件验证。
+
+复测顺序：确认页首0.1.1 → 只试听 → 发令音与麦克风 → 录像10秒 → 导出ZIP。无声或仍30fps也应保留报告，不继续让用户只反复调音量。用户原始音视频仅用于本地分析，未加入仓库。
+
+GitHub 可见性观察：2026-11-01 本次交付前 API 返回 private=false（公开）。本次没有修改仓库可见性；源码和APK更新在现有仓库中，原始音视频未上传。

@@ -1,6 +1,6 @@
 {
   "version": "0.1.1-probe",
-  "testCount": 36,
+  "testCount": 39,
   "suites": [
     {
       "suite": "cn.tracktimer.core.ClockSyncTest",
@@ -49,6 +49,12 @@
       "tests": 4,
       "failures": 0,
       "errors": 0
+    },
+    {
+      "suite": "cn.tracktimer.app.VideoQualityTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0
     }
   ],
   "lintIssues": [
@@ -68,7 +74,7 @@
       "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
     }
   ],
-  "apkSha256": "d7c1c067dc8af2aebb8ea7732dfde1afa9d516b2bcefa6a493cfed66d0ba21d4",
+  "apkSha256": "429235d07f199ee9d00020172be0fd8bd9bf882a0eeb6d92a26ba39d3f0968f8",
   "physicalDeviceRetest": "pending",
   "precisionVerified": false
 }

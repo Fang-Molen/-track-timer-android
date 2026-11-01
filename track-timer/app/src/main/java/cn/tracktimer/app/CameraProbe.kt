@@ -142,7 +142,6 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         try {
             val stats = FrameAnalysis.analyze(times, config?.targetFps ?: 60)
             report.put("captureFps", stats.measuredFps ?: JSONObject.NULL)
-                .put("requestedFpsAchieved", stats.measuredFps?.let { it >= (config?.targetFps ?: 60) * .9 } ?: false)
                 .put("maxFrameGapNs", stats.maxGapNs).put("p95FrameGapNs", stats.p95GapNs)
                 .put("estimatedMissingCaptureFrames", stats.estimatedMissingFrames)
         } catch (e: Exception) { report.put("timestampError", e.message) }
@@ -157,6 +156,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             // Partial files never masquerade as a completed recording or enter exports.
             if (pending.exists()) pending.delete()
         }
+        updateFrameRateStatus(report)
         report.put("error", problem ?: JSONObject.NULL)
         runCatching { store.saveJson("camera", report) }.onFailure { report.put("saveError", it.message) }
         main.post { onDone(report) }
@@ -184,4 +184,18 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     }
 
     private fun status(message: String) { main.post { onStatus(message) } }
+
+    companion object {
+        internal fun updateFrameRateStatus(report: JSONObject) {
+            val requested = report.optInt("requestedFps", 0)
+            fun reached(key: String): Boolean {
+                val measured = report.optDouble(key)
+                return requested > 0 && measured.isFinite() && measured >= requested * .9
+            }
+            val capture = reached("captureFps")
+            val encoded = reached("encodedFps")
+            report.put("captureFpsAchieved", capture).put("encodedFpsAchieved", encoded)
+                .put("requestedFpsAchieved", capture && encoded)
+        }
+    }
 }
