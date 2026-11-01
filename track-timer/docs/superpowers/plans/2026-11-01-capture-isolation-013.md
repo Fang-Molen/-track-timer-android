@@ -22,21 +22,22 @@
 ### Task 1: Pure capture capability and drain
 **Files:** CameraModes.kt, DeviceReport.kt, FrameDrain.kt; CameraModesTest.kt, FrameDrainTest.kt.
 **Interfaces:** CameraConfig.captureOnly and forcedCameraId selector; FrameDrain provides image timestamps and close/error counts.
-- [ ] Write selection tests: no recorder/preview required; PRIVATE duration enforced; no format fallback; forced camera not substituted. Write image release/error/bounded-drain tests.
-- [ ] Run focused tests; expected new behavior fails.
-- [ ] Implement exact-mode selection, PRIVATE ImageReader consumption, diagnostic capabilities.
-- [ ] Run focused tests; expected pass. Commit.
+- [x] Write selection tests: no recorder/preview required; PRIVATE duration enforced; no format fallback; forced camera not substituted. Write image release/error/bounded-drain tests.
+- [x] Run focused tests; expected new behavior fails.
+- [x] Implement exact-mode selection, PRIVATE ImageReader consumption, diagnostic capabilities.
+- [x] Run focused tests; expected pass. Commit.
 
 ### Task 2: Camera owner, automatic run and UI
 **Files:** CameraProbe.kt, CameraComparison.kt, MainActivity.kt; camera/sequence/UI tests.
 **Interfaces:** CameraProbe accepts optional runId and forcedCameraId; reports captureOnly/imageFps/reader timestamps. CameraComparison accepts ordered step completion, cancellation and produces conservative summary.
-- [ ] Write tests for finite sufficient dual-stream measurements, format confound wording, cancellation/late completion, failed steps, pure capture no video, and one-click permission denial/UI recovery.
-- [ ] Run focused tests; expected missing behavior fails.
-- [ ] Integrate reader ownership and reporting; sequence five steps on same device; disable competing actions; save run reports.
-- [ ] Run entire core/app unit suite, assemble and lint; expected pass. Commit.
+- [x] Write tests for finite sufficient dual-stream measurements, format confound wording, cancellation/late completion, failed steps, pure capture no video, and one-click permission denial/UI recovery.
+- [x] Run focused tests; expected missing behavior fails.
+- [x] Integrate reader ownership and reporting; sequence five steps on same device; disable competing actions; save run reports.
+- [x] Run entire core/app unit suite, assemble and lint; expected pass. Commit.
 
 ### Task 3: Review and delivery
 **Files:** verification/, deliverables/, README/handoff docs.
-- [ ] Independent whole-change review; resolve blocking findings with regression tests.
-- [ ] Verify APK version/signature, all tests/lint, document physical verification pending.
-- [ ] Copy APK/checksum, preserve root README and old artifacts, fresh fetch and fast-forward push existing main; verify remote bytes. Commit and deliver link/instructions.
+- [x] Independent whole-change review; resolve blocking findings with regression tests.
+- [x] Verify APK version/signature, all tests/lint, document physical verification pending.
+- [x] Copy APK/checksum and preserve root README and old artifacts.
+- Delivery operation: fresh fetch, fast-forward existing main, push and compare remote APK bytes before reporting the download link.

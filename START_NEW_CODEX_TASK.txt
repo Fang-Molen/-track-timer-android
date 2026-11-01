@@ -1,3 +1,5 @@
+最新状态（0.1.3）：用户已授权一键采集隔离诊断APK，0.1.3已构建并随仓库交付，待真机结果。0.1.2四种普通录像配置实际均30.002fps，包含无预览，所以不是“只在预览”。0.1.3自动对照同相机720p/1080p的PRIVATE ImageReader纯采集与MediaRecorder录像，另测120fps高速仅录像；不保证已修复60fps。优先读取最新验证记录，分析runId关联的comparison/camera报告，不能仅凭消费者不同就认定编码器故障。下文的旧版本描述属于历史背景。
+
 请接手我的“双安卓手机田径训练计时 App”项目。
 
 指定仓库：https://github.com/Fang-Molen/-track-timer-android
