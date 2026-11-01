@@ -1,0 +1,98 @@
+{
+  "version": "0.1.2-probe",
+  "testCount": 53,
+  "suites": [
+    {
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.core.ClockSyncTest"
+    },
+    {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.core.FrameAnalysisTest"
+    },
+    {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.core.ResourceGateTest"
+    },
+    {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.core.SyncProtocolTest"
+    },
+    {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.core.ToneDetectorTest"
+    },
+    {
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.CameraModesTest"
+    },
+    {
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.CameraProbeTest"
+    },
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.CameraSessionSetupTest"
+    },
+    {
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.MainActivityTest"
+    },
+    {
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.ReportStoreTest"
+    },
+    {
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.TestTonePlayerTest"
+    },
+    {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "suite": "cn.tracktimer.app.VideoQualityTest"
+    }
+  ],
+  "lintIssues": [
+    {
+      "id": "LockedOrientationActivity",
+      "severity": "Warning",
+      "message": "Expecting `android:screenOrientation=\"unspecified\"` or `\"fullSensor\"` for this activity so the user can use the application in any orientation and provide a great experience on Chrome OS devices"
+    },
+    {
+      "id": "DiscouragedApi",
+      "severity": "Warning",
+      "message": "Should not restrict activity to fixed orientation. This may not be suitable for different form factors, causing the app to be letterboxed."
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning",
+      "message": "Consider also using `StorageManager#getAllocatableBytes` and `allocateBytes` which will consider clearable cached data"
+    }
+  ],
+  "apkSha256": "b042ac008eeb898abe97fddf1f3c721aea2f6925901e7a99e55e078f35c1a24e",
+  "physicalDeviceRetest": "pending",
+  "precisionVerified": false
+}

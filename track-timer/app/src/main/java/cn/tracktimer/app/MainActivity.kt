@@ -63,6 +63,11 @@ class MainActivity : Activity() {
     private lateinit var audioButton: Button
     private lateinit var auditionButton: Button
     private lateinit var exportButton: Button
+    private lateinit var logExportButton: Button
+    private lateinit var cameraMode: Spinner
+    private lateinit var previewCover: TextView
+    private lateinit var cameraHistoryStatus: TextView
+    private val cameraHistory = linkedMapOf<CameraTestMode, String>()
     private lateinit var preview: TextureView
 
     override fun onCreate(state: Bundle?) {
@@ -137,14 +142,38 @@ class MainActivity : Activity() {
         val frame = FrameLayout(this).apply { setBackgroundColor(Color.rgb(19, 35, 31)) }
         frame.addView(preview, FrameLayout.LayoutParams(-1, -1))
         capture.addView(frame, LinearLayout.LayoutParams(-1, dp(220)).apply { topMargin = dp(14) })
-        cameraStatus = text("预览在录像测试时开启。", 13, muted)
+        previewCover = text("仅录像模式\n录制时不显示预览画面", 16, Color.WHITE).apply { gravity = Gravity.CENTER; visibility = View.GONE }
+        frame.addView(previewCover, FrameLayout.LayoutParams(-1, -1))
+        capture.addView(text("录像测试模式", 14, ink, true), spaced(12))
+        cameraMode = Spinner(this).apply {
+            adapter = ArrayAdapter(this@MainActivity, android.R.layout.simple_spinner_dropdown_item, CameraTestMode.entries.map { it.label })
+            contentDescription = "录像测试模式"
+        }
+        capture.addView(cameraMode, spaced(6))
+        cameraStatus = text("默认测试1080p、60帧。选择模式后点下方录制。", 13, muted)
         capture.addView(cameraStatus, spaced(10))
+        cameraMode.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onNothingSelected(parent: AdapterView<*>?) = Unit
+            override fun onItemSelected(parent: AdapterView<*>?, view: View?, position: Int, id: Long) {
+                if (cameraProbe != null) return
+                val mode = CameraTestMode.entries[position]
+                preview.visibility = if (mode.previewEnabled) View.VISIBLE else View.INVISIBLE
+                previewCover.visibility = if (mode.previewEnabled) View.GONE else View.VISIBLE
+                cameraStatus.text = mode.label + "\n" + when {
+                    !mode.previewEnabled -> "此模式不显示预览；点录制后仍会保存完整视频。"
+                    mode.highSpeed -> "实验性高速录像；实际帧率以测量结果为准。"
+                    else -> "预览在录像测试时开启；实际帧率以测量结果为准。"
+                }
+            }
+        }
         cameraButton = button("录制 10 秒视频")
         capture.addView(cameraButton, spaced(10))
         cameraButton.setOnClickListener {
             if (cameraProbe != null) { cameraButton.isEnabled = false; cameraProbe?.stop() }
             else withPermission(Manifest.permission.CAMERA) { startCamera() }
         }
+        cameraHistoryStatus = text("各模式结果会显示在这里。", 12, muted).apply { setTextIsSelectable(true) }
+        capture.addView(cameraHistoryStatus, spaced(10))
         audioStatus = text("先只试听，确认能听到声音，再测试麦克风。音量键调整媒体音量。", 13, muted)
         capture.addView(audioStatus, spaced(18))
         auditionButton = button("只试听发令音（不录音）")
@@ -160,14 +189,11 @@ class MainActivity : Activity() {
         reports.addView(reportStatus, spaced(12))
         exportButton = button("导出诊断报告 ZIP")
         reports.addView(exportButton, spaced(10))
-        exportButton.setOnClickListener {
-            val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
-                addCategory(Intent.CATEGORY_OPENABLE); type = "application/zip"
-                putExtra(Intent.EXTRA_TITLE, "track-timer-${Build.MODEL.replace(' ', '-')}-${System.currentTimeMillis()}.zip")
-            }
-            @Suppress("DEPRECATION")
-            startActivityForResult(intent, 20)
-        }
+        exportButton.setOnClickListener { chooseExport(logsOnly = false) }
+        logExportButton = button("仅导出日志 ZIP（小文件）")
+        reports.addView(logExportButton, spaced(10))
+        logExportButton.setOnClickListener { chooseExport(logsOnly = true) }
+        reports.addView(text("分析帧率时优先发小文件。原始录音录像仍保存在本机，可随时完整导出。", 12, muted), spaced(8))
         page.addView(text("校准范围仅描述网络对时的不确定性。\n总计时精度仍需真机和参考设备对照验证。", 12, muted), spaced(22))
         setContentView(scroll)
     }
@@ -230,19 +256,24 @@ class MainActivity : Activity() {
 
     private fun startCamera() {
         if (cameraProbe != null) return
-        cameraButton.text = "停止录像"; cameraStatus.text = "正在配置相机……"
+        val mode = CameraTestMode.entries[cameraMode.selectedItemPosition]
+        cameraButton.text = "停止录像"; cameraStatus.text = "${mode.label}\n正在配置相机……"
         cameraProbe = CameraProbe(this, store, preview, { cameraStatus.text = it }, { report ->
             if (!isDestroyed) {
                 cameraProbe = null; cameraButton.text = "录制 10 秒视频"; cameraButton.isEnabled = true
-                cameraStatus.text = if (!report.isNull("error")) "录像测试未完成：${report.optString("error")}"
+                cameraStatus.text = mode.label + "\n" + if (!report.isNull("error")) "录像测试未完成：${report.optString("error")}"
                 else "采集帧率：${number(report, "captureFps")} fps\n编码视频帧率：${number(report, "encodedFps")} fps\n" +
                     "最大采集间隔：${ms(report.optLong("maxFrameGapNs"))} ms\n" +
                     (if (!report.optBoolean("requestedFpsAchieved")) "未达到请求的 ${report.optInt("requestedFps")} fps；请导出报告排查。\n" else "") +
                     "视频已保存；采集与编码时间映射仍待标定。"
+                val result = if (!report.isNull("error")) "未完成：${report.optString("error")}" else
+                    "采集 ${number(report, "captureFps")} / 视频 ${number(report, "encodedFps")} fps"
+                cameraHistory[mode] = "${mode.label}\n$result"
+                cameraHistoryStatus.text = cameraHistory.values.joinToString("\n\n")
                 if (report.has("saveError")) cameraStatus.append("\n报告保存失败：${report.optString("saveError")}")
                 updateButtons(); updateReportCount()
             }
-        }).also { it.start() }
+        }, mode).also { it.start() }
         updateButtons()
     }
 
@@ -280,14 +311,24 @@ class MainActivity : Activity() {
         }
     }
 
+    private fun chooseExport(logsOnly: Boolean) {
+        val intent = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE); type = "application/zip"
+            val kind = if (logsOnly) "logs-" else ""
+            putExtra(Intent.EXTRA_TITLE, "track-timer-$kind${Build.MODEL.replace(' ', '-')}-${System.currentTimeMillis()}.zip")
+        }
+        @Suppress("DEPRECATION")
+        startActivityForResult(intent, if (logsOnly) 21 else 20)
+    }
+
     @Deprecated("Platform callback retained for API 26 compatibility")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         val uri = data?.data ?: return
-        if (requestCode != 20 || resultCode != RESULT_OK) return
+        if (requestCode !in setOf(20, 21) || resultCode != RESULT_OK) return
         exportBusy = true; updateButtons(); reportStatus.text = "正在导出……"
         jobs.execute {
-            val result = runCatching { contentResolver.openOutputStream(uri)?.use { store.export(it) } ?: error("无法打开保存位置") }
+            val result = runCatching { contentResolver.openOutputStream(uri)?.use { store.export(it, logsOnly = requestCode == 21) } ?: error("无法打开保存位置") }
             ui {
                 exportBusy = false; updateButtons()
                 reportStatus.text = result.fold({ "导出完成，可分享 ZIP 用于分析。" }, { "导出失败：${it.message}" })
@@ -312,7 +353,10 @@ class MainActivity : Activity() {
     override fun onDestroy() { jobs.shutdownNow(); super.onDestroy() }
 
     private fun updateButtons() {
-        if (::exportButton.isInitialized) exportButton.isEnabled = cameraProbe == null && audioProbe == null && !syncBusy && !exportBusy
+        val canExport = cameraProbe == null && audioProbe == null && !syncBusy && !exportBusy
+        if (::exportButton.isInitialized) exportButton.isEnabled = canExport
+        if (::logExportButton.isInitialized) logExportButton.isEnabled = canExport
+        if (::cameraMode.isInitialized) cameraMode.isEnabled = cameraProbe == null && !exportBusy
     }
     private fun updateReportCount() { reportStatus.text = "已保存 ${store.reportCount()} 份诊断记录；所有文件保存在本机。" }
     private fun ui(block: () -> Unit) { runOnUiThread { if (!isDestroyed) block() } }

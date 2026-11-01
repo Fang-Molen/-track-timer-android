@@ -9,6 +9,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
 import android.widget.TextView
+import android.widget.Spinner
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -31,6 +32,8 @@ class MainActivityTest {
             assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("尚不生成跑步成绩") })
             assertTrue(views.filterIsInstance<Button>().any { it.text == "只试听发令音（不录音）" && it.isEnabled })
             assertEquals(AudioManager.STREAM_MUSIC, activity.volumeControlStream)
+            assertTrue(views.filterIsInstance<Button>().any { it.text == "仅导出日志 ZIP（小文件）" && it.isEnabled })
+            assertEquals(CameraTestMode.FHD60_PREVIEW.label, views.filterIsInstance<Spinner>().single().selectedItem)
         } finally { controller.pause().stop().destroy() }
     }
     @Test fun deniedCameraPermissionDoesNotStartRecordingAndAllowsRetry() {
@@ -61,6 +64,34 @@ class MainActivityTest {
             }
             assertTrue(audition.isEnabled)
             assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("媒体音量为零") })
+            assertTrue(views.filterIsInstance<Button>().first { it.text == "导出诊断报告 ZIP" }.isEnabled)
+        } finally { controller.pause().stop().destroy() }
+    }
+    @Test fun choosingEncoderOnlyExplainsNoPreviewWithoutStartingTheCamera() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val views = descendants(activity.window.decorView)
+            views.filterIsInstance<Spinner>().single().setSelection(CameraTestMode.HD60_RECORD_ONLY.ordinal)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("不显示预览") })
+            assertNull(shadowOf(activity).lastRequestedPermission)
+            assertEquals("录制 10 秒视频", views.filterIsInstance<Button>().first { it.text.contains("10 秒") }.text.toString())
+        } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun smallExportUsesItsOwnRequestAndCancelLeavesControlsUsable() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val views = descendants(activity.window.decorView)
+            val button = views.filterIsInstance<Button>().first { it.text == "仅导出日志 ZIP（小文件）" }
+            button.performClick()
+            val launched = shadowOf(activity).nextStartedActivityForResult
+            assertEquals(21, launched.requestCode)
+            assertTrue(launched.intent.getStringExtra(android.content.Intent.EXTRA_TITLE)!!.contains("logs"))
+            shadowOf(activity).receiveResult(launched.intent, android.app.Activity.RESULT_CANCELED, null)
+            assertTrue(button.isEnabled)
             assertTrue(views.filterIsInstance<Button>().first { it.text == "导出诊断报告 ZIP" }.isEnabled)
         } finally { controller.pause().stop().destroy() }
     }
