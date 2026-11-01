@@ -34,6 +34,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private var conditionsAtStart: JSONObject? = null
     private var preview: Surface? = null
     private var recording = false
+    private var cancelledByUser = false
     @Volatile private var finished = false
     private var config: CameraConfig? = null
     private var video: File? = null
@@ -144,7 +145,14 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
     }
 
-    fun stop(reason: String? = null) { handler.post { finish(reason) } }
+    fun stop(reason: String? = null, cancelled: Boolean = reason == null) {
+        handler.post {
+            if (!finished) {
+                cancelledByUser = cancelled
+                finish(reason ?: "用户停止采集")
+            }
+        }
+    }
 
     private fun finish(error: String?) {
         if (finished) return
@@ -162,7 +170,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         val report = JSONObject().put("kind", "camera_probe").put("testMode", mode.name).put("testModeLabel", mode.label)
             .put("requestedFps", config?.targetFps ?: mode.fps ?: JSONObject.NULL)
             .put("runId", runId ?: JSONObject.NULL).put("requestedCameraId", forcedCameraId ?: JSONObject.NULL)
-            .put("captureOnly", mode.captureOnly).put("consumerType", if (mode.captureOnly) "ImageReader_PRIVATE" else "MediaRecorder")
+            .put("cancelled", cancelledByUser).put("captureOnly", mode.captureOnly).put("consumerType", if (mode.captureOnly) "ImageReader_PRIVATE" else "MediaRecorder")
             .put("streamUseCase", "DEFAULT").put("runtimeConditionsStart", conditionsAtStart ?: JSONObject.NULL)
             .put("runtimeConditionsEnd", runCatching { DeviceReport.runtimeConditions(context) }.getOrNull() ?: JSONObject.NULL)
             .put("size", config?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL).put("cameraId", config?.id ?: JSONObject.NULL)
@@ -248,10 +256,9 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             }
             val capture = reached("captureFps")
             val encoded = !report.optBoolean("captureOnly") && reached("encodedFps")
-            val consumer = if (report.optBoolean("captureOnly")) reached("imageFps") else encoded
             report.put("captureFpsAchieved", capture).put("encodedFpsAchieved", encoded)
                 .put("imageFpsAchieved", report.optBoolean("captureOnly") && reached("imageFps"))
-                .put("requestedFpsAchieved", capture && consumer && report.isNull("error"))
+                .put("requestedFpsAchieved", CameraComparison.reached(report))
         }
     }
 }

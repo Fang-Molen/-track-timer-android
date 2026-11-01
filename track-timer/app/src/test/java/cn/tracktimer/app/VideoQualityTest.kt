@@ -34,6 +34,19 @@ class VideoQualityTest {
         assertFalse(missing.getBoolean("requestedFpsAchieved"))
     }
 
+    @Test fun shortErroredOrCancelledSamplesNeverSetOverallSuccess() {
+        val short = report(60.0, 60.0).put("captureSpanNs", 100_000_000)
+        CameraProbe.updateFrameRateStatus(short)
+        assertFalse(short.getBoolean("requestedFpsAchieved"))
+        val cancelled = report(60.0, 60.0).put("cancelled", true)
+        CameraProbe.updateFrameRateStatus(cancelled)
+        assertFalse(cancelled.getBoolean("requestedFpsAchieved"))
+        val malformed = report(60.0, 60.0).put("timestampError", "non-monotonic")
+        CameraProbe.updateFrameRateStatus(malformed)
+        assertFalse(malformed.getBoolean("requestedFpsAchieved"))
+    }
+
     private fun report(capture: Double?, encoded: Double?) = JSONObject().put("requestedFps", 60)
+        .put("captureSpanNs", 9_000_000_000L).put("encodedSpanNs", 9_000_000_000L)
         .put("captureFps", capture ?: JSONObject.NULL).put("encodedFps", encoded ?: JSONObject.NULL)
 }

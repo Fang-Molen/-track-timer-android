@@ -333,7 +333,7 @@ class MainActivity : Activity() {
         val run = comparison
         if (run != null) { run.cancel(); finishComparison(run) }
         else comparisonStatus.text = reason
-        cameraProbe?.stop(reason)
+        cameraProbe?.stop(reason, cancelled = true)
         cameraSequenceHandler.removeCallbacksAndMessages(null)
         updateButtons()
     }
@@ -445,7 +445,7 @@ class MainActivity : Activity() {
         resumed = false
         super.onPause()
         if (comparisonStarting || comparison != null) cancelComparison("App 离开前台，排查已停止")
-        cameraProbe?.stop("App 离开前台，录像已停止")
+        cameraProbe?.stop("App 离开前台，录像已停止", cancelled = true)
         audioProbe?.cancel()
         // A queued Future cancelled before execution never runs its finally block.
         // Also ignore callbacks from an old request after the user starts a new one.

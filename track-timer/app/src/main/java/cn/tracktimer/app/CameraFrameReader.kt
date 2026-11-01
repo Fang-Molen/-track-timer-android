@@ -15,11 +15,11 @@ class CameraFrameReader(size: Size, private val onError: (String) -> Unit) {
     val surface get() = checkNotNull(reader).surface
     init {
         try {
-            reader = ImageReader.newInstance(size.width, size.height, ImageFormat.PRIVATE, 4).also { source ->
-                source.setOnImageAvailableListener({ available ->
+            val source = ImageReader.newInstance(size.width, size.height, ImageFormat.PRIVATE, 4)
+            reader = source
+            source.setOnImageAvailableListener({ available ->
                     drain.drain({ available.acquireNextImage() }, { it.timestamp })?.let(onError)
                 }, Handler(thread.looper))
-            }
         } catch (e: Exception) { reader?.close(); thread.quitSafely(); throw e }
     }
     fun close(): FrameDrain.Snapshot {

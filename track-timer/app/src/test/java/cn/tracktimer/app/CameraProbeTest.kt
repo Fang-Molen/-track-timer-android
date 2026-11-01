@@ -14,6 +14,20 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class CameraProbeTest {
+    @Test fun manualStopRecordsCancellationEvenWithoutAnExplicitReason() {
+        val app = RuntimeEnvironment.getApplication()
+        var report: JSONObject? = null
+        val probe = CameraProbe(app, ReportStore(app), TextureView(app), {}, { report = it }, CameraTestMode.HD60_CAPTURE_ONLY)
+        probe.stop()
+        val deadline = System.nanoTime() + 3_000_000_000L
+        while (report == null && System.nanoTime() < deadline) {
+            shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(5)
+        }
+        val result = checkNotNull(report)
+        assertTrue(result.optBoolean("cancelled"))
+        assertFalse(result.getBoolean("requestedFpsAchieved"))
+        assertFalse(result.getBoolean("diagnosticFpsReached"))
+    }
     @Test fun captureOnlyFailureHasNoVideoAndKeepsRunAndPinnedCameraIdentity() {
         val app = RuntimeEnvironment.getApplication()
         val store = ReportStore(app)
