@@ -155,6 +155,25 @@ class CameraSessionSetupTest {
         }
     }
 
+    @Test @Config(sdk = [33]) fun clockCalibrationRequestsSensorTimeBaseBeforeHighSpeedSessionCreation() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280,720), Range(240,240),240,true,90)
+            val request = CameraSessionSetup.recordRequest(camera,c,listOf(outputs[0]))
+            CameraSessionSetup.open(camera,listOf(outputs[0]),request,callback,handler,highSpeed=true,sensorTimestampBase=true)
+            val session = RecordingCameraShadow.lastConfiguration!!
+            assertEquals(OutputConfiguration.TIMESTAMP_BASE_SENSOR,session.outputConfigurations.single().timestampBase)
+            assertEquals(SessionConfiguration.SESSION_HIGH_SPEED,session.sessionType)
+        }
+    }
+    @Test fun oldApiClockProbeUsesDefaultWithoutCallingNewTimestampApi() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280,720), Range(120,120),120,true,90)
+            val request = CameraSessionSetup.recordRequest(camera,c,outputs)
+            CameraSessionSetup.open(camera,outputs,request,callback,handler,highSpeed=true,sensorTimestampBase=true)
+            assertEquals(SessionConfiguration.SESSION_HIGH_SPEED,RecordingCameraShadow.lastConfiguration!!.sessionType)
+        }
+    }
+
     private val callback = object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) = Unit
         override fun onConfigureFailed(session: CameraCaptureSession) = Unit

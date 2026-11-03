@@ -18,6 +18,17 @@ class CameraModesTest {
         highSpeed: Map<Size, List<Range<Int>>> = emptyMap()) = CameraCapabilities("0",
         mapOf(hd to 16_666_666L, full to 16_666_666L), preview, ranges, highSpeed, true, 90, true)
 
+    @Test fun clock240NeedsExactHighSpeedAndEncoderOutputCapabilities() {
+        val c = caps(highSpeed = mapOf(hd to listOf(Range(120,120), Range(240,240))))
+            .copy(encoderSizes = mapOf(hd to 16_666_666L))
+        val selected = CameraModes.select(listOf(c), CameraTestMode.HD240_CLOCK)!!
+        assertEquals(240, selected.targetFps); assertTrue(selected.mode.clockCalibration)
+        assertFalse(selected.previewEnabled)
+        assertNull(CameraModes.select(listOf(c.copy(encoderSizes = emptyMap())), CameraTestMode.HD240_CLOCK))
+        assertNull(CameraModes.select(listOf(c.copy(highSpeedRanges = mapOf(hd to listOf(Range(120,120))))), CameraTestMode.HD240_CLOCK))
+        assertNotNull(CameraModes.select(listOf(c.copy(recorderSizes = emptyMap())), CameraTestMode.HD120_CLOCK))
+    }
+
     private fun manualCaps() = caps().copy(manualSensorSupported = true,
         exposureRangeNs = Range(100_000L, 100_000_000L), sensitivityRange = Range(50, 19200), maxFrameDurationNs = 100_000_000L)
 

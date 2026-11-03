@@ -11,6 +11,7 @@ import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CameraManager
 import android.hardware.camera2.CaptureRequest
 import android.media.AudioManager
+import android.media.MediaCodec
 import android.media.MediaCodecList
 import android.media.MediaRecorder
 import android.os.Build
@@ -50,7 +51,8 @@ object DeviceReport {
                     c.availableCaptureRequestKeys.orEmpty().containsAll(listOf(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_AE_MODE,
                         CaptureRequest.SENSOR_EXPOSURE_TIME, CaptureRequest.SENSOR_FRAME_DURATION, CaptureRequest.SENSOR_SENSITIVITY)),
                 c[CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE], c[CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE],
-                c[CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION] ?: 0)
+                c[CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION] ?: 0,
+                map.getOutputSizes(MediaCodec::class.java)?.associateWith { map.getOutputMinFrameDuration(MediaCodec::class.java,it) }.orEmpty())
         }
     }
 
@@ -99,6 +101,9 @@ object DeviceReport {
                 .put("timestampSource", c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE])
                 .put("orientation", c[CameraCharacteristics.SENSOR_ORIENTATION])
                 .put("fpsRanges", JSONArray(c[CameraCharacteristics.CONTROL_AE_AVAILABLE_TARGET_FPS_RANGES]?.map { it.toString() }.orEmpty()))
+                .put("encoderSizes", JSONArray(map?.getOutputSizes(MediaCodec::class.java)?.map { size ->
+                    JSONObject().put("size",size.toString()).put("minFrameDurationNs",map.getOutputMinFrameDuration(MediaCodec::class.java,size))
+                }.orEmpty()))
                 .put("recordingSizes", formats).put("previewSizes", previewFormats).put("highSpeedModes", highSpeed)
                 .put("privateSizes", JSONArray(map?.getOutputSizes(ImageFormat.PRIVATE)?.map { size ->
                     JSONObject().put("size", size.toString()).put("minFrameDurationNs", map.getOutputMinFrameDuration(ImageFormat.PRIVATE, size))
@@ -124,7 +129,7 @@ object DeviceReport {
             val c = capabilities.getOrNull()?.let { CameraModes.select(it, mode) }
             JSONObject().put("mode", mode.name).put("label", mode.label)
                 .put("advertisedSupported", c != null).put("videoUseCaseRequested", mode.videoUseCase).put("manualSensorRequested", mode.manual).put("previewEnabled", mode.previewEnabled)
-                .put("highSpeed", mode.highSpeed).put("captureOnly", mode.captureOnly).put("requestedFps", c?.targetFps ?: mode.fps ?: JSONObject.NULL)
+                .put("clockCalibration",mode.clockCalibration).put("highSpeed", mode.highSpeed).put("captureOnly", mode.captureOnly).put("requestedFps", c?.targetFps ?: mode.fps ?: JSONObject.NULL)
                 .put("size", c?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL)
         })
         val report = JSONObject().put("kind", "device")

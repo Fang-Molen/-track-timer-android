@@ -6,6 +6,7 @@ import android.hardware.camera2.*
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaRecorder
+import android.os.Build
 import android.os.Handler
 import android.os.HandlerThread
 import android.os.Looper
@@ -30,6 +31,14 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private val cameraGate = ResourceGate<CameraDevice> { it.close() }
     private var session: CameraCaptureSession? = null
     private var recorder: MediaRecorder? = null
+    private var encoder: SurfaceEncoder? = null
+    private val codecPoll = object : Runnable {
+        override fun run() {
+            if (finished || encoder == null) return
+            try { encoder?.poll(); handler.postDelayed(this,5) }
+            catch (e: Exception) { finish("编码采集失败：${e.message}") }
+        }
+    }
     private var frameReader: CameraFrameReader? = null
     private var conditionsAtStart: JSONObject? = null
     private var preview: Surface? = null
@@ -64,7 +73,13 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                     checkNotNull(surfaceTexture).setDefaultBufferSize(c.size.width, c.size.height)
                     preview = Surface(surfaceTexture)
                 }
-                val target = if (c.captureOnly) {
+                val target = if (mode.clockCalibration) {
+                    val file = store.newFile("video", "pending"); video = file
+                    val e = SurfaceEncoder(); encoder = e
+                    e.prepare(c,file)
+                    handler.post(codecPoll)
+                    e.surface
+                } else if (c.captureOnly) {
                     CameraFrameReader(c.size) { stop("图像消费失败：$it") }.also { frameReader = it }.surface
                 } else {
                     val file = store.newFile("video", "pending"); video = file
@@ -148,7 +163,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                     } catch (e: Exception) { finish(e.message ?: "无法开始录像") }
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) { finish("此分辨率/帧率组合无法启动，请导出设备报告。") }
-            }, handler, c.highSpeed, c.streamUseCase)
+            }, handler, c.highSpeed, c.streamUseCase, mode.clockCalibration)
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
     }
 
@@ -164,12 +179,15 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private fun finish(error: String?) {
         if (finished) return
         finished = true
-        handler.removeCallbacks(autoStop); handler.removeCallbacks(startupTimeout)
+        handler.removeCallbacks(autoStop); handler.removeCallbacks(startupTimeout); handler.removeCallbacks(codecPoll)
         var problem = error
         runCatching { session?.stopRepeating() }
         runCatching { session?.abortCaptures() }
         if (recording) runCatching { recorder?.stop() }.onFailure { problem = problem ?: "录像未完整保存：${it.message}" }
         else if (problem == null) problem = "录像尚未开始"
+        val captureEndNs = SystemClock.elapsedRealtimeNanos()
+        val codecReport = encoder?.finish(); encoder = null
+        if (codecReport != null && !codecReport.isNull("codecError")) problem = problem ?: "编码未完整完成：${codecReport.optString("codecError")}"
         recording = false
         runCatching { session?.close() }; runCatching { cameraGate.close() }
         val drained = frameReader?.close(); frameReader = null
@@ -177,7 +195,10 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         val report = JSONObject().put("kind", "camera_probe").put("testMode", mode.name).put("testModeLabel", mode.label)
             .put("requestedFps", config?.targetFps ?: mode.fps ?: JSONObject.NULL)
             .put("runId", runId ?: JSONObject.NULL).put("requestedCameraId", forcedCameraId ?: JSONObject.NULL)
-            .put("cancelled", cancelledByUser).put("captureOnly", mode.captureOnly).put("consumerType", if (mode.captureOnly) "ImageReader_PRIVATE" else "MediaRecorder")
+            .put("cancelled", cancelledByUser).put("captureOnly", mode.captureOnly).put("consumerType", when { mode.clockCalibration -> "MediaCodec_surface"; mode.captureOnly -> "ImageReader_PRIVATE"; else -> "MediaRecorder" })
+            .put("clockCalibrationRequested",mode.clockCalibration)
+            .put("outputTimestampBase",if (mode.clockCalibration && Build.VERSION.SDK_INT >= 33 && sessionParametersSubmitted) "SENSOR" else "DEFAULT")
+            .put("captureEndElapsedNs",captureEndNs)
             .put("streamUseCase", if (mode.videoUseCase) "VIDEO_RECORD" else "DEFAULT")
             .put("requestedStreamUseCase", if (mode.videoUseCase) 3L else 0L)
             .put("outputUseCaseSubmitted", mode.videoUseCase && sessionParametersSubmitted)
@@ -199,6 +220,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             .put("privateMinFrameDurationNs", config?.privateMinFrameDurationNs ?: JSONObject.NULL)
             .put("frames", frames).put("precisionVerified", false)
             .put("captureSpanNs", if (times.size >= 2) times.last() - times.first() else 0)
+        codecReport?.keys()?.forEach { key -> report.put(key,codecReport.get(key)) }
         try {
             val stats = FrameAnalysis.analyze(times, config?.targetFps ?: 60)
             report.put("captureFps", stats.measuredFps ?: JSONObject.NULL)
@@ -229,6 +251,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         }
         report.put("error", problem ?: JSONObject.NULL)
         updateFrameRateStatus(report)
+        if (mode.clockCalibration) HighSpeedCalibration.annotate(report)
         runCatching { store.saveJson("camera", report) }.onFailure { report.put("saveError", it.message) }
         main.post { onDone(report) }
         worker.quitSafely()

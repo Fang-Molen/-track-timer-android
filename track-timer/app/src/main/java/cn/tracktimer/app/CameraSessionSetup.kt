@@ -30,7 +30,7 @@ object CameraSessionSetup {
     /** Returns whether initial session parameters were submitted, not whether hardware honored them. */
     @Suppress("DEPRECATION")
     fun open(device: CameraDevice, outputs: List<Surface>, request: CaptureRequest,
-        callback: CameraCaptureSession.StateCallback, handler: Handler, highSpeed: Boolean = false, streamUseCase: Long = 0L): Boolean {
+        callback: CameraCaptureSession.StateCallback, handler: Handler, highSpeed: Boolean = false, streamUseCase: Long = 0L, sensorTimestampBase: Boolean = false): Boolean {
         require(streamUseCase == 0L || (Build.VERSION.SDK_INT >= 33 && !highSpeed && outputs.size == 1)) {
             "显式录像用途需要Android13及以上、普通会话和单个录像输出"
         }
@@ -42,6 +42,7 @@ object CameraSessionSetup {
             val session = SessionConfiguration(if (highSpeed) SessionConfiguration.SESSION_HIGH_SPEED else SessionConfiguration.SESSION_REGULAR,
                 outputs.map { surface -> OutputConfiguration(surface).apply {
                     if (Build.VERSION.SDK_INT >= 33 && streamUseCase != 0L) setStreamUseCase(streamUseCase)
+                    if (Build.VERSION.SDK_INT >= 33 && sensorTimestampBase) setTimestampBase(OutputConfiguration.TIMESTAMP_BASE_SENSOR)
                 } }, executor, callback)
             session.setSessionParameters(request)
             device.createCaptureSession(session)

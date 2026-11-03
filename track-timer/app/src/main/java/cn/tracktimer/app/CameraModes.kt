@@ -6,7 +6,7 @@ import android.util.Size
 
 enum class CameraTestMode(val label: String, val size: Size?, val fps: Int?,
     val previewEnabled: Boolean = true, val highSpeed: Boolean = false, val captureOnly: Boolean = false,
-    val videoUseCase: Boolean = false, val manual: Boolean = false) {
+    val videoUseCase: Boolean = false, val manual: Boolean = false, val clockCalibration: Boolean = false) {
     FHD60_PREVIEW("1080p · 请求60帧 · 含预览", Size(1920, 1080), 60),
     HD60_RECORD_ONLY("720p · 请求60帧 · 仅录像", Size(1280, 720), 60, false),
     FHD60_RECORD_ONLY("1080p · 请求60帧 · 仅录像", Size(1920, 1080), 60, false),
@@ -21,7 +21,9 @@ enum class CameraTestMode(val label: String, val size: Size?, val fps: Int?,
     HD60_MANUAL("720p · 60帧 · 默认用途/手动曝光", Size(1280, 720), 60, false, manual = true),
     FHD60_MANUAL("1080p · 60帧 · 默认用途/手动曝光", Size(1920, 1080), 60, false, manual = true),
     HD60_MANUAL_VIDEO_USE_CASE("720p · 60帧 · 录像用途/手动曝光", Size(1280, 720), 60, false, videoUseCase = true, manual = true),
-    FHD60_MANUAL_VIDEO_USE_CASE("1080p · 60帧 · 录像用途/手动曝光", Size(1920, 1080), 60, false, videoUseCase = true, manual = true)
+    FHD60_MANUAL_VIDEO_USE_CASE("1080p · 60帧 · 录像用途/手动曝光", Size(1920, 1080), 60, false, videoUseCase = true, manual = true),
+    HD120_CLOCK("720p · 120帧 · 时钟校准", Size(1280,720),120,false,true,clockCalibration=true),
+    HD240_CLOCK("720p · 240帧 · 时钟校准", Size(1280,720),240,false,true,clockCalibration=true)
 }
 
 data class ManualSensorSettings(val exposureNs: Long, val frameDurationNs: Long, val sensitivityIso: Int) {
@@ -41,7 +43,7 @@ data class CameraCapabilities(val id: String, val recorderSizes: Map<Size, Long>
     val highSpeedRanges: Map<Size, List<Range<Int>>>, val realtime: Boolean,
     val sensorOrientation: Int, val fpsIsSessionKey: Boolean, val privateSizes: Map<Size, Long> = emptyMap(),
     val streamUseCases: Set<Long> = emptySet(), val manualSensorSupported: Boolean = false,
-    val exposureRangeNs: Range<Long>? = null, val sensitivityRange: Range<Int>? = null, val maxFrameDurationNs: Long = 0)
+    val exposureRangeNs: Range<Long>? = null, val sensitivityRange: Range<Int>? = null, val maxFrameDurationNs: Long = 0, val encoderSizes: Map<Size, Long> = emptyMap())
 
 object CameraModes {
     /** Null means this explicit mode is not advertised; never substitute a different experiment. */
@@ -57,7 +59,7 @@ object CameraModes {
         val options = cameras.filter { forcedCameraId == null || it.id == forcedCameraId }.flatMap { camera ->
             if (mode.videoUseCase && (Build.VERSION.SDK_INT < 33 || 3L !in camera.streamUseCases)) return@flatMap emptyList()
             val manual = if (mode.manual) manualSettings(camera) ?: return@flatMap emptyList() else null
-            val sizes = if (mode.captureOnly) camera.privateSizes else camera.recorderSizes
+            val sizes = when { mode.clockCalibration -> camera.encoderSizes; mode.captureOnly -> camera.privateSizes; else -> camera.recorderSizes }
             sizes.keys.filter { size ->
                 size.width <= 1920 && size.height <= 1080 && (mode.size == null || size == mode.size) &&
                     (!mode.previewEnabled || size in camera.previewSizes)

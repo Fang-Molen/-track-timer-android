@@ -14,6 +14,19 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class CameraProbeTest {
+    @Test fun cancelledClockProbeKeepsConsumerIdentityAndCannotPassClockMapping() {
+        val app = RuntimeEnvironment.getApplication()
+        var report: JSONObject? = null
+        val probe = CameraProbe(app,ReportStore(app),TextureView(app),{}, { report=it },CameraTestMode.HD240_CLOCK)
+        probe.stop()
+        val deadline=System.nanoTime()+3_000_000_000L
+        while (report==null && System.nanoTime()<deadline) { shadowOf(Looper.getMainLooper()).idle();Thread.sleep(5) }
+        val r=checkNotNull(report)
+        assertTrue(r.getBoolean("cancelled"));assertEquals("MediaCodec_surface",r.getString("consumerType"))
+        assertFalse(r.getJSONObject("clockCalibration").getBoolean("fileClockMappingObserved"))
+        assertFalse(r.has("videoFile"))
+    }
+
     @Test fun manualStopRecordsCancellationEvenWithoutAnExplicitReason() {
         val app = RuntimeEnvironment.getApplication()
         var report: JSONObject? = null
