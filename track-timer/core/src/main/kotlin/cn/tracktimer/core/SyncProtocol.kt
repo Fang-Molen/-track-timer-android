@@ -12,7 +12,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 
-private fun readBoundedLine(socket: Socket, timeoutMs: Int): String {
+internal fun readBoundedLine(socket: Socket, timeoutMs: Int): String {
     val input = socket.getInputStream()
     val deadline = System.nanoTime() + timeoutMs * 1_000_000L
     val bytes = ArrayList<Byte>(128)
@@ -31,7 +31,7 @@ private fun readBoundedLine(socket: Socket, timeoutMs: Int): String {
 }
 
 class SyncServer(private val token: String, private val sessionId: String,
-    private val clock: () -> Long) : Closeable {
+    private val clock: () -> Long, private val races: RaceCoordinator? = null) : Closeable {
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()
     private val workers = ThreadPoolExecutor(2, 2, 0, TimeUnit.MILLISECONDS, LinkedBlockingQueue(4),
         { r -> Thread(r, "sync-peer").apply { isDaemon = true } })
@@ -65,6 +65,14 @@ class SyncServer(private val token: String, private val sessionId: String,
                     val line = readBoundedLine(socket, 1500)
                     val received = clock()
                     val parts = line.split('|')
+                    if (parts.firstOrNull() == "RACE1") {
+                        val reply = try {
+                            require(parts.size == 6 && parts[1] == token) { "PAIRING" }
+                            val r = requireNotNull(races) { "UNSUPPORTED" }.handle(parts[2],parts[3],parts[4],parts[5])
+                            "RACE1|${r.hostSession}|${r.clientSession}|${r.raceId}|${r.phase}|${r.startNs}|${if(r.acknowledged) 1 else 0}|${if(r.readyFresh) 1 else 0}"
+                        } catch (e: IllegalArgumentException) { "ERROR|${e.message ?: "PROTOCOL"}" }
+                        output.write((reply + "\n").toByteArray(Charsets.US_ASCII)); output.flush(); return
+                    }
                     if (parts.size != 3 || parts[0] != "PROBE" || parts[1] != token ||
                         !parts[2].matches(Regex("[0-9]{1,4}"))) {
                         output.write("ERROR|Pairing or protocol error\n".toByteArray()); output.flush(); return
