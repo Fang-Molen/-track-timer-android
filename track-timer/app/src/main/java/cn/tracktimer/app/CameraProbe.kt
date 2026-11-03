@@ -24,7 +24,10 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private val texture: TextureView, private val onStatus: (String) -> Unit,
     private val onDone: (JSONObject) -> Unit,
     private val mode: CameraTestMode = CameraTestMode.AUTOMATIC,
-    private val runId: String? = null, private val forcedCameraId: String? = null) {
+    private val runId: String? = null, private val forcedCameraId: String? = null,
+    private val durationMs:Long = 10_000, private val onReady:()->Unit = {}) {
+    private val budget=CaptureBudget(durationMs,mode.fps ?: 60)
+    private var readyReported=false
     private val worker = HandlerThread("camera-probe").apply { start() }
     private val handler = Handler(worker.looper)
     private val main = Handler(Looper.getMainLooper())
@@ -35,7 +38,13 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private val codecPoll = object : Runnable {
         override fun run() {
             if (finished || encoder == null) return
-            try { encoder?.poll(); handler.postDelayed(this,5) }
+            try {
+                encoder?.poll()
+                if(!readyReported && recording && times.size>=3 && (encoder?.sampleCount ?: 0)>=30 && SystemClock.elapsedRealtimeNanos()-startedNs>=1_000_000_000L) {
+                    readyReported=true;main.post { if(!finished)onReady() }
+                }
+                handler.postDelayed(this,5)
+            }
             catch (e: Exception) { finish("编码采集失败：${e.message}") }
         }
     }
@@ -66,7 +75,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             try {
                 if (finished) return@post
                 handler.postDelayed(startupTimeout, 8_000)
-                check(mode.captureOnly || store.directory.usableSpace > 100L * 1024 * 1024) { "存储空间不足，请至少保留 100 MB。" }
+                check(mode.captureOnly || store.directory.usableSpace > budget.requiredBytes) { "存储空间不足，请为本场录像预留至少 ${budget.requiredBytes / 1024 / 1024} MB。" }
                 val c = DeviceReport.cameraConfig(context, mode, forcedCameraId); config = c
                 conditionsAtStart = runCatching { DeviceReport.runtimeConditions(context) }.getOrNull()
                 if (c.previewEnabled) {
@@ -75,7 +84,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                 }
                 val target = if (mode.clockCalibration) {
                     val file = store.newFile("video", "pending"); video = file
-                    val e = SurfaceEncoder(); encoder = e
+                    val e = SurfaceEncoder(budget.sampleLimit); encoder = e
                     e.prepare(c,file)
                     handler.post(codecPoll)
                     e.surface
@@ -132,6 +141,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                         CameraSessionSetup.repeat(s, request, object : CameraCaptureSession.CaptureCallback() {
                             override fun onCaptureCompleted(s: CameraCaptureSession, request: CaptureRequest, result: TotalCaptureResult) {
                                 if (!recording || finished) return
+                                if(frames.length()>=budget.sampleLimit) { finish("相机时间戳超出存储上限");return }
                                 val sensor = result[CaptureResult.SENSOR_TIMESTAMP]
                                 if (sensor != null) times.add(sensor)
                                 frames.put(JSONObject().put("frameNumber", result.frameNumber)
@@ -153,19 +163,21 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                                     .put("noiseReductionMode", result[CaptureResult.NOISE_REDUCTION_MODE] ?: JSONObject.NULL)
                                     .put("edgeMode", result[CaptureResult.EDGE_MODE] ?: JSONObject.NULL)
                                     .put("rollingShutterSkewNs", result[CaptureResult.SENSOR_ROLLING_SHUTTER_SKEW] ?: JSONObject.NULL))
-                                if (frames.length() == 1) status("${mode.label}\n正在测量10秒；${if (c.captureOnly) "只保存时间戳，不存视频" else if (c.previewEnabled) "已收到相机帧" else "仅录像，不显示预览"}。")
+                                if (frames.length() == 1) status("${mode.label}\n正在录像，最长${durationMs/1000}秒；${if (c.captureOnly) "只保存时间戳，不存视频" else if (c.previewEnabled) "已收到相机帧" else "仅录像，不显示预览"}。")
                             }
                             override fun onCaptureFailed(s: CameraCaptureSession, r: CaptureRequest, failure: CaptureFailure) { failedCaptures++ }
                         }, handler, c.highSpeed)
                         recorder?.start(); startedNs = SystemClock.elapsedRealtimeNanos(); recording = true
                         handler.removeCallbacks(startupTimeout)
-                        handler.postDelayed(autoStop, 10_000)
+                        handler.postDelayed(autoStop, durationMs)
                     } catch (e: Exception) { finish(e.message ?: "无法开始录像") }
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) { finish("此分辨率/帧率组合无法启动，请导出设备报告。") }
             }, handler, c.highSpeed, c.streamUseCase, mode.clockCalibration)
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
     }
+
+    fun complete() { handler.post { finish(null) } }
 
     fun stop(reason: String? = null, cancelled: Boolean = reason == null) {
         handler.post {
@@ -206,6 +218,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             .put("runtimeConditionsStart", conditionsAtStart ?: JSONObject.NULL)
             .put("runtimeConditionsEnd", runCatching { DeviceReport.runtimeConditions(context) }.getOrNull() ?: JSONObject.NULL)
             .put("size", config?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL).put("cameraId", config?.id ?: JSONObject.NULL)
+            .put("sensorOrientation",config?.sensorOrientation ?: 0).put("recordingLimitMs",durationMs)
             .put("previewEnabled", mode.previewEnabled).put("outputSurfaceCount", configuredOutputCount)
             .put("sessionType", if (mode.highSpeed) "constrained_high_speed" else "regular")
             .put("highSpeedBatchTimestampsUnverified", mode.highSpeed)
@@ -252,7 +265,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         report.put("error", problem ?: JSONObject.NULL)
         updateFrameRateStatus(report)
         if (mode.clockCalibration) HighSpeedCalibration.annotate(report)
-        runCatching { store.saveJson("camera", report) }.onFailure { report.put("saveError", it.message) }
+        runCatching { val saved=store.saveJson("camera", report);report.put("reportFile",saved.name) }.onFailure { report.put("saveError", it.message) }
         main.post { onDone(report) }
         worker.quitSafely()
     }
@@ -266,10 +279,11 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             } ?: error("MP4 中没有视频轨道")
             extractor.selectTrack(track)
             val pts = ArrayList<Long>()
-            while (extractor.sampleTime >= 0 && pts.size < 10000) {
+            while (extractor.sampleTime >= 0 && pts.size <= budget.sampleLimit) {
                 pts.add(extractor.sampleTime * 1000)
                 if (!extractor.advance()) break
             }
+            check(pts.size <= budget.sampleLimit) { "MP4帧数超过存储上限" }
             val analysis = FrameAnalysis.analyze(pts.sorted(), config?.targetFps ?: 60)
             report.put("encodedFrameCount", pts.size).put("encodedFps", analysis.measuredFps ?: JSONObject.NULL)
                 .put("encodedMaxGapNs", analysis.maxGapNs).put("encodedPtsNs", JSONArray(pts))

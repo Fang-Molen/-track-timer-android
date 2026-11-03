@@ -12,7 +12,7 @@ import org.json.JSONObject
 import java.io.File
 
 /** Confined to CameraProbe's worker; owns partial setup and drains a bounded number per poll. */
-class SurfaceEncoder {
+class SurfaceEncoder(sampleLimit:Int = 6000) {
     private var codec: MediaCodec? = null
     private var muxer: MediaMuxer? = null
     private var input: Surface? = null
@@ -23,7 +23,8 @@ class SurfaceEncoder {
     private var closed = false
     private var name: String? = null
     private var finalReport: JSONObject? = null
-    private val samples = EncodedSamples()
+    private val samples = EncodedSamples(sampleLimit)
+    val sampleCount:Int get() = samples.ptsNs.size
     private val info = MediaCodec.BufferInfo()
     val surface: Surface get() = checkNotNull(input)
 

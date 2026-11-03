@@ -23,7 +23,9 @@ enum class CameraTestMode(val label: String, val size: Size?, val fps: Int?,
     HD60_MANUAL_VIDEO_USE_CASE("720p · 60帧 · 录像用途/手动曝光", Size(1280, 720), 60, false, videoUseCase = true, manual = true),
     FHD60_MANUAL_VIDEO_USE_CASE("1080p · 60帧 · 录像用途/手动曝光", Size(1920, 1080), 60, false, videoUseCase = true, manual = true),
     HD120_CLOCK("720p · 120帧 · 时钟校准", Size(1280,720),120,false,true,clockCalibration=true),
-    HD240_CLOCK("720p · 240帧 · 时钟校准", Size(1280,720),240,false,true,clockCalibration=true)
+    HD240_CLOCK("720p · 240帧 · 时钟校准", Size(1280,720),240,false,true,clockCalibration=true),
+    HD120_FIELD("720p · 120帧 · 跑道实测",Size(1280,720),120,true,true,clockCalibration=true),
+    HD240_FIELD("720p · 240帧 · 跑道实测",Size(1280,720),240,true,true,clockCalibration=true)
 }
 
 data class ManualSensorSettings(val exposureNs: Long, val frameDurationNs: Long, val sensitivityIso: Int) {
