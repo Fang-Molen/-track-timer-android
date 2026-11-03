@@ -49,4 +49,23 @@ class CameraStatisticsTest {
         r.put("captureFps", 60.0); CameraStatistics.annotate(r)
         assertTrue(r.getBoolean("requestedFpsAchieved")); assertEquals(60.0, r.getDouble("sensorFps"), .001)
     }
+
+    @Test fun captureFailureInvalidatesNormalSuccessEvenWhenAverageRatesReachTarget() {
+        val r = highSpeed().put("sessionType", "regular").put("requestedFps", 60)
+            .put("captureFps", 59.9).put("encodedFps", 60.0).put("failedCaptures", 1)
+        CameraStatistics.annotate(r)
+        assertFalse(r.getBoolean("diagnosticFpsReached"))
+        assertFalse(r.getBoolean("captureFpsAchieved"))
+        assertFalse(r.getBoolean("videoRateReached"))
+        assertFalse(CameraComparison.reached(r))
+        assertFalse(CameraStatistics.usable(r, "capture"))
+    }
+
+    @Test fun captureFailureInvalidatesHighSpeedVideoSuccessEvenWhenVideoRateReachesTarget() {
+        val r = highSpeed().put("failedCaptures", 1)
+        CameraStatistics.annotate(r)
+        assertFalse(r.getBoolean("videoRateReached"))
+        assertFalse(r.getBoolean("encodedFpsAchieved"))
+        assertEquals("video_rate_not_confirmed", r.getString("rateStatus"))
+    }
 }

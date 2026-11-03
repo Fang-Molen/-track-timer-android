@@ -8,6 +8,7 @@ object CameraStatistics {
     fun highSpeed(r: JSONObject): Boolean = r.optString("sessionType") == "constrained_high_speed"
 
     private fun healthy(r: JSONObject): Boolean = !r.optBoolean("cancelled") &&
+        r.optInt("failedCaptures", 0) == 0 &&
         r.optInt("imageTimestampsOmitted", 0) == 0 &&
         listOf("error", "imageReaderError", "timestampError", "encodedInspectionError", "imageTimestampError").all { r.isNull(it) }
 
