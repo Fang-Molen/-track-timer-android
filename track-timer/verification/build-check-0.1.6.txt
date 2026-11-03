@@ -1,0 +1,5 @@
+Source: d4ed045cc120473f722ae61c5646a071d2d5fda6
+JDK21 / Gradle8.11.1 / AndroidSDK35
+Tasks: :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+BUILD SUCCESSFUL in 35s
+57 actionable tasks: 4 executed, 53 up-to-date
