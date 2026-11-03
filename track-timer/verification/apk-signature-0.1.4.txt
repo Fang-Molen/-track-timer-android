@@ -1,0 +1,19 @@
+Verifies
+Verified using v1 scheme (JAR signing): false
+Verified using v2 scheme (APK Signature Scheme v2): true
+Verified using v3 scheme (APK Signature Scheme v3): false
+Verified using v3.1 scheme (APK Signature Scheme v3.1): false
+Verified using v4 scheme (APK Signature Scheme v4): false
+Verified for SourceStamp: false
+Number of signers: 1
+Signer #1 certificate DN: C=US, O=Android, CN=Android Debug
+Signer #1 certificate SHA-256 digest: 52e46c1f931b96cca6273a8ceac5f4a38f7e93d8f2238c676a90cf433f83b92a
+Signer #1 certificate SHA-1 digest: 84660c5ad732ac00d8826d92d37ad7a15fe31913
+Signer #1 certificate MD5 digest: 83fe6af507c77424cd454fdc0dae1d28
+Signer #1 key algorithm: RSA
+Signer #1 key size (bits): 2048
+Signer #1 public key SHA-256 digest: 12db95d2ad8bd6370c83c0fffcc514592a39af32ecf527b501ab42a79f7559a4
+Signer #1 public key SHA-1 digest: b11b0b5dbb4d9fd463279559630378bb9efdd4c0
+Signer #1 public key MD5 digest: b4d5b050c04aade47a152bff95acce3b
+
+package: name='cn.tracktimer.app' versionCode='5' versionName='0.1.4-probe' platformBuildVersionName='15' platformBuildVersionCode='35' compileSdkVersion='35' compileSdkVersionCodename='15'
