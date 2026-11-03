@@ -4,6 +4,13 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class EncodedSamplesTest {
+    @Test fun completionRequiresActualVideoSamplesAndEndOfStream() {
+        val s=EncodedSamples()
+        assertThrows(IllegalStateException::class.java){s.checkComplete(true)}
+        s.add(100,200_000);s.add(200,300_000)
+        assertThrows(IllegalStateException::class.java){s.checkComplete(false)}
+        s.checkComplete(true)
+    }
     @Test fun keepsRawClockButReturnsRelativeMuxTime() {
         val s=EncodedSamples()
         assertEquals(0L,s.add(400_000_000L,400_010_000_000L))

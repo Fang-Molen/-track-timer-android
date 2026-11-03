@@ -5,11 +5,12 @@ import org.json.JSONObject
 import java.util.UUID
 
 /** Main-thread state machine. Duplicate/stale completions cannot advance a run. */
-class CameraComparison(val cameraId: String, val id: String = UUID.randomUUID().toString()) {
+class CameraComparison(val cameraId: String, val id: String = UUID.randomUUID().toString(), val highSpeedCalibration: Boolean = false) {
+    val plannedModes = if (highSpeedCalibration) listOf(CameraTestMode.HD120_CLOCK, CameraTestMode.HD240_CLOCK) else modes
     private val steps = ArrayList<JSONObject>()
     private var cancelled = false
     private var interruptedMode: String? = null
-    val current: CameraTestMode? get() = if (cancelled) null else modes.getOrNull(steps.size)
+    val current: CameraTestMode? get() = if (cancelled) null else plannedModes.getOrNull(steps.size)
     val stepNumber get() = steps.size + 1
 
     fun accept(report: JSONObject): Boolean {
@@ -22,6 +23,15 @@ class CameraComparison(val cameraId: String, val id: String = UUID.randomUUID().
     fun cancel() { interruptedMode = current?.name; cancelled = true }
 
     fun report(): JSONObject {
+        if (highSpeedCalibration) return JSONObject().put("kind","camera_clock_calibration")
+            .put("comparisonType","high_speed_clock_v1").put("runId",id).put("cameraId",cameraId)
+            .put("cancelled",cancelled).put("interruptedMode",interruptedMode ?: JSONObject.NULL)
+            .put("completed",!cancelled && steps.size==plannedModes.size).put("plannedSteps",plannedModes.size)
+            .put("steps",JSONArray(steps)).put("precisionVerified",false)
+            .put("videoRateReachedCount",steps.count(CameraStatistics::videoRateReached))
+            .put("clockAlignedCount",steps.count { CameraStatistics.videoRateReached(it) &&
+                it.optJSONObject("clockCalibration")?.optBoolean("fileClockMappingObserved")==true })
+            .put("note","采样时间戳对齐不证明每帧独立曝光或整套计时精度；不支持240时不替换为其他帧率。")
         fun pair(a: CameraTestMode, b: CameraTestMode, factor: String): JSONObject {
             val first = steps.firstOrNull { it.optString("testMode") == a.name }
             val second = steps.firstOrNull { it.optString("testMode") == b.name }

@@ -34,10 +34,11 @@ object HighSpeedCalibration {
         var firstMatched: Long? = null
         var lastMatched: Long? = null
         if (rawValid && sensorValid) {
+            eligible = sensors.count { it >= raw.first()-TOLERANCE_NS && it <= raw.last()+TOLERANCE_NS }
             var cursor = 0
             for (sensor in sensors) {
                 if (sensor < raw.first() - TOLERANCE_NS || sensor > raw.last() + TOLERANCE_NS) continue
-                eligible++
+                if (cursor == raw.size) continue
                 while (cursor+1 < raw.size && abs(raw[cursor+1]-sensor) < abs(raw[cursor]-sensor)) cursor++
                 val residual = sensor - raw[cursor]
                 if (abs(residual) <= TOLERANCE_NS) {
@@ -47,7 +48,6 @@ object HighSpeedCalibration {
                     lastMatched = sensor
                     maxResidual = maxOf(maxResidual,abs(residual))
                     cursor++ // Each encoded sample can be used only once.
-                    if (cursor == raw.size) break
                 }
             }
         }

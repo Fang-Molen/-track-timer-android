@@ -7,6 +7,11 @@ class EncodedSamples(private val limit: Int = 6000) {
     val ptsNs: List<Long> get() = points
     val observedNs: List<Long> get() = observations
 
+    fun checkComplete(eos: Boolean) {
+        check(eos) { "编码未收到结束标志" }
+        check(points.size >= 2) { "编码未生成足够的视频帧" }
+    }
+
     fun add(ptsUs: Long, observedNs: Long): Long {
         check(points.size < limit) { "编码时间戳超过诊断存储上限" }
         require(ptsUs > 0 && ptsUs <= Long.MAX_VALUE / 1000 && observedNs > 0) { "无效编码时间戳" }

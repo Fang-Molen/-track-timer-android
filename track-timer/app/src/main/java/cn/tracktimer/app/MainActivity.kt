@@ -51,6 +51,8 @@ class MainActivity : Activity() {
     private var comparisonGeneration = 0
     private val cameraSequenceHandler = Handler(Looper.getMainLooper())
     private lateinit var comparisonButton: Button
+    private lateinit var highSpeedButton: Button
+    private var startingHighSpeed = false
     private lateinit var comparisonStatus: TextView
     private lateinit var detectButton: Button
     private var audioProbe: AudioProbe? = null
@@ -148,6 +150,13 @@ class MainActivity : Activity() {
 
         val capture = card(page)
         section(capture, "03", "验证采集能力", "手机固定，光线充足。一键排查期间请保持本页前台，暂不进行声音或对时测试。")
+        highSpeedButton = button("一键校准120/240帧（约30秒）")
+        capture.addView(highSpeedButton,spaced(12))
+        capture.addView(text("新测试：分别录制120和240帧，核对视频与相机时钟。一台手机即可；无预览，视频保持正常速度。240不支持会明确记录。",13,muted),spaced(8))
+        highSpeedButton.setOnClickListener {
+            if (comparisonStarting || comparison != null) cancelComparison("用户停止校准")
+            else withPermission(Manifest.permission.CAMERA) { startComparison(highSpeed = true) }
+        }
         comparisonButton = button("一键排查60帧（约2分钟）")
         capture.addView(comparisonButton, spaced(12))
         comparisonStatus = text("自动测试720p/1080p的四种设置组合，最后对照120帧高速录像。全程无预览；手动曝光可能偏暗或偏亮，仅用于排查帧率。", 13, muted).apply { setTextIsSelectable(true) }
@@ -179,6 +188,7 @@ class MainActivity : Activity() {
                 preview.visibility = if (mode.previewEnabled) View.VISIBLE else View.INVISIBLE
                 previewCover.visibility = if (mode.previewEnabled) View.GONE else View.VISIBLE
                 cameraStatus.text = mode.label + "\n" + when {
+                    mode.clockCalibration -> "核对编码时间戳与相机时钟；不显示预览。帧率达标与采样时间对齐分别显示。"
                     mode.captureOnly -> "只接收相机帧并立即释放；不显示预览，不保存视频。"
                     mode.manual -> "手动曝光8毫秒、固定帧周期；画面可能偏暗或偏亮，仅用于排查帧率。不显示预览。"
                     !mode.previewEnabled -> "此模式不显示预览；点录制后仍会保存完整视频。"
@@ -275,9 +285,10 @@ class MainActivity : Activity() {
         }
     }
 
-    private fun startComparison() {
+    private fun startComparison(highSpeed: Boolean = false) {
         if (comparisonStarting || comparison != null || cameraProbe != null || audioProbe != null || syncBusy || exportBusy) return
         comparisonStarting = true
+        startingHighSpeed = highSpeed
         val generation = ++comparisonGeneration
         val runId = UUID.randomUUID().toString()
         stopHost()
@@ -287,17 +298,22 @@ class MainActivity : Activity() {
             val result = runCatching {
                 val device = DeviceReport.collect(this).put("runId", runId)
                 store.saveJson("device", device)
-                if (device.has("selectedCamera")) device.getString("selectedCamera")
+                if (highSpeed) {
+                    val caps = DeviceReport.cameraCapabilities(this)
+                    CameraModes.select(caps,CameraTestMode.HD120_CLOCK)?.id
+                        ?: CameraModes.select(caps,CameraTestMode.HD240_CLOCK)?.id
+                        ?: caps.firstOrNull()?.id ?: error("没有可供校准的后置相机")
+                } else if (device.has("selectedCamera")) device.getString("selectedCamera")
                 else DeviceReport.cameraCapabilities(this).firstOrNull()?.id ?: error("没有可供排查的后置相机")
             }
             ui {
                 if (generation != comparisonGeneration || !comparisonStarting) return@ui
                 comparisonStarting = false
                 result.onSuccess { id ->
-                    comparison = CameraComparison(id, runId)
+                    comparison = CameraComparison(id, runId, highSpeedCalibration=highSpeed)
                     startComparisonStep(checkNotNull(comparison))
                 }.onFailure {
-                    val failure = JSONObject().put("kind", "camera_comparison").put("runId", runId)
+                    val failure = JSONObject().put("kind", if(highSpeed) "camera_clock_calibration" else "camera_comparison").put("runId", runId)
                         .put("preparationError", it.message).put("completed", false).put("precisionVerified", false)
                     runCatching { store.saveJson("comparison", failure) }
                     comparisonStatus.text = "排查未能开始：${it.message}"
@@ -314,7 +330,7 @@ class MainActivity : Activity() {
         preview.visibility = View.INVISIBLE
         previewCover.visibility = View.VISIBLE
         previewCover.text = "自动排查中\n不显示预览画面"
-        comparisonStatus.text = "第 ${run.stepNumber}/${CameraComparison.modes.size} 项 · ${mode.label}\n每项10秒；不支持或失败会写入报告。"
+        comparisonStatus.text = "第 ${run.stepNumber}/${run.plannedModes.size} 项 · ${mode.label}\n每项10秒；不支持或失败会写入报告。"
         startCamera(mode, run)
     }
 
@@ -323,6 +339,15 @@ class MainActivity : Activity() {
         val saved = runCatching { store.saveJson("comparison", summary) }
         if (comparison === run) comparison = null
         comparisonStatus.text = if (summary.optBoolean("cancelled")) "排查已中断，已完成项目保留。"
+            else if (run.highSpeedCalibration) {
+                val steps=summary.getJSONArray("steps")
+                "高速校准完成\n"+(0 until steps.length()).joinToString("\n") { index ->
+                    val r=steps.getJSONObject(index)
+                    "${r.optInt("requestedFps")}帧：" + if (!r.isNull("error")) "未完成（${r.optString("error")}）" else
+                        "实测${number(r,"encodedFps")} fps；" +
+                        if (r.optJSONObject("clockCalibration")?.optBoolean("fileClockMappingObserved")==true) "采样时间对齐" else "时间对齐未确认"
+                }+"\n请导出小日志。采样对齐不代表整套计时精度已验证。"
+            }
             else "自动排查完成：普通60帧 ${summary.optInt("normalRateReachedCount")}/${summary.optInt("normalTestCount")} 项达到请求。\n" +
                 "高速视频：${number(summary, "highSpeedEncodedFps")} fps；" +
                 (if (summary.optBoolean("highSpeedVideoRateReached")) "视频帧率达到请求，逐帧时间对应待验证。" else "尚未确认视频帧率达到请求。") +
@@ -362,9 +387,14 @@ class MainActivity : Activity() {
                     else "采集 ${number(report, "captureFps")} / $consumer fps"
                 cameraStatus.text = mode.label + "\n" + result + "\n" +
                     (if (!report.isNull("error")) "本项未完整完成，详情已写入日志。"
+                    else if (mode.clockCalibration) "视频按正常速度保存；编码原始时间戳已记录。"
                     else if (mode.captureOnly) "只保存时间戳，不保存视频。"
                     else if (report.has("videoFile")) "录像已保存；时间映射仍待标定。" else "未获得可用视频文件。") +
-                    (if (mode.highSpeed) {
+                    (if (mode.clockCalibration) {
+                        val c=report.optJSONObject("clockCalibration")
+                        "\n"+(if (report.optBoolean("videoRateReached")) "视频帧率达到请求；" else "视频帧率尚未确认；")+
+                            (if (c?.optBoolean("fileClockMappingObserved")==true) "采样时间对齐，整套计时精度待验证。" else "时间对齐未确认，请导出日志。")
+                    } else if (mode.highSpeed) {
                         if (report.optBoolean("videoRateReached")) "\n视频帧率达到请求；元数据可能批量返回，逐帧时间对应待验证。"
                         else "\n尚未确认视频帧率达到请求（含错误、取消或不足5秒）。"
                     } else if (!report.optBoolean("diagnosticFpsReached")) "\n尚未确认达到请求帧率（含测量不足5秒）。" else "")
@@ -478,8 +508,11 @@ class MainActivity : Activity() {
         if (::logExportButton.isInitialized) logExportButton.isEnabled = canExport
         if (::cameraMode.isInitialized) cameraMode.isEnabled = cameraProbe == null && !exportBusy && !running
         if (::comparisonButton.isInitialized) {
-            comparisonButton.text = if (running) "停止自动排查" else "一键排查60帧（约2分钟）"
-            comparisonButton.isEnabled = running || canExport
+            val high = comparison?.highSpeedCalibration ?: startingHighSpeed
+            comparisonButton.text = if (running && !high) "停止自动排查" else "一键排查60帧（约2分钟）"
+            comparisonButton.isEnabled = (running && !high) || canExport
+            highSpeedButton.text = if (running && high) "停止高速校准" else "一键校准120/240帧（约30秒）"
+            highSpeedButton.isEnabled = (running && high) || canExport
         }
         if (::cameraButton.isInitialized) cameraButton.isEnabled = !running && !exportBusy
         if (::audioButton.isInitialized) audioButton.isEnabled = audioProbe == null && !running && !exportBusy

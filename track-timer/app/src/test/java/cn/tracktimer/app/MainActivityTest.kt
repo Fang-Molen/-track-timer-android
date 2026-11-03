@@ -21,6 +21,32 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class MainActivityTest {
+    @Test fun highSpeedCalibrationRequestsCameraOnlyAndAllowsRetryAfterDenial() {
+        val controller=Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val a=controller.get();val views=descendants(a.window.decorView)
+            val button=views.filterIsInstance<Button>().first { it.text=="一键校准120/240帧（约30秒）" }
+            button.performClick()
+            val req=shadowOf(a).lastRequestedPermission
+            assertArrayEquals(arrayOf(Manifest.permission.CAMERA),req.requestedPermissions)
+            a.onRequestPermissionsResult(req.requestCode,req.requestedPermissions,intArrayOf(PackageManager.PERMISSION_DENIED))
+            assertTrue(button.isEnabled)
+            assertTrue(views.filterIsInstance<Button>().first {it.text=="仅导出日志 ZIP（小文件）"}.isEnabled)
+        } finally {controller.pause().stop().destroy()}
+    }
+    @Test fun highSpeedPermissionGrantedInBackgroundWaitsUntilForeground() {
+        val controller=Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val a=controller.get();val button=descendants(a.window.decorView).filterIsInstance<Button>().first {it.text=="一键校准120/240帧（约30秒）"}
+            button.performClick();val req=shadowOf(a).lastRequestedPermission
+            controller.pause()
+            a.onRequestPermissionsResult(req.requestCode,req.requestedPermissions,intArrayOf(PackageManager.PERMISSION_GRANTED))
+            shadowOf(Looper.getMainLooper()).idle()
+            assertEquals("一键校准120/240帧（约30秒）",button.text.toString())
+            assertTrue(button.isEnabled)
+        } finally {controller.stop().destroy()}
+    }
+
     @Test fun opensDiagnosticControlsWithoutStartingHardware() {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         try {

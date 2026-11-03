@@ -80,6 +80,7 @@ class SurfaceEncoder {
             val deadline = SystemClock.elapsedRealtimeNanos()+2_000_000_000L
             while (!eos && SystemClock.elapsedRealtimeNanos()<deadline) poll(10_000)
             check(eos) { "等待编码结束超时" }
+            samples.checkComplete(eos)
         } else error = "编码器尚未开始"
         if (muxStarted) attempt { checkNotNull(muxer).stop() }
         if (started) attempt { codec?.stop() }

@@ -37,6 +37,13 @@ class HighSpeedCalibrationTest {
             assertFalse(r.getBoolean("precisionVerified"))
         }
     }
+    @Test fun secondMetadataSampleNearTheFinalCodecTimestampCannotReuseItOrDisappear() {
+        val r=fixture();val f=r.getJSONArray("frames")
+        f.put(JSONObject().put("frameNumber",1200).put("sensorNs",410_000_000_360L).put("callbackElapsedNs",410_030_000_000L))
+        f.put(JSONObject().put("frameNumber",1201).put("sensorNs",410_000_000_460L).put("callbackElapsedNs",410_030_000_000L))
+        assertFalse(result(r).getBoolean("sampledClockAlignmentObserved"))
+    }
+
     @Test fun shiftedOrNormalizedEncoderClockCannotPassByFittingAnOffset() {
         for (shift in listOf(1_234_567L,400_000_000_000L)) {
             val r=fixture(); val a=r.getJSONArray("codecPtsNs")
