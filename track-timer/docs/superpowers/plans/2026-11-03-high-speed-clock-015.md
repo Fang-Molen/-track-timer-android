@@ -22,18 +22,18 @@
 ### Task1: Sample accounting and calibration evidence
 Files: app EncodedSamples.kt, HighSpeedCalibration.kt; corresponding tests.
 Interfaces: EncodedSamples.add(ptsUs,observedNs):Long returns relative muxPTS; snapshot report arrays. HighSpeedCalibration.annotate(JSONObject) adds nested clockCalibration evidence without physical verification.
-- [ ] Tests: sparse step4/step8 sensor matches, wrong epoch/unknown source, insufficient/cancel/error, duplicate/missing frames, MP4 retiming/count mismatch, bounded sample collector and rawPTS preservation.
-- [ ] Observe RED, implement gates/accounting, run core/app suite GREEN, commit.
+- [x] Tests: sparse step4/step8 sensor matches, wrong epoch/unknown source, insufficient/cancel/error, duplicate/missing frames, MP4 retiming/count mismatch, bounded sample collector and rawPTS preservation.
+- [x] Observe RED, implement gates/accounting, run core/app suite GREEN, commit.
 
 ### Task2: Encoder capture and capability modes
 Files: SurfaceEncoder.kt, CameraProbe.kt, CameraModes.kt, DeviceReport.kt; mode/probe/boundary tests.
 Interfaces: SurfaceEncoder.prepare(config,file), surface, poll(), finish():JSONObject, close(); owns all resources. New HD120_CLOCK/HD240_CLOCK modes with clockCalibration flag.
-- [ ] Tests: strict240 capability and no fallback, new consumer identity on selection failure/cancel; encoder output handling releases buffers on sink error and excludes codec config from sample count.
-- [ ] Observe RED, implement bounded polling/EOS and muxing, wire CameraProbe new reports and inspect file; run tests GREEN, commit.
+- [x] Tests: strict240 capability and no fallback, new consumer identity on selection failure/cancel; encoder output handling releases buffers on sink error and excludes codec config from sample count.
+- [x] Observe RED, implement bounded polling/EOS and muxing, wire CameraProbe new reports and inspect file; run tests GREEN, commit.
 
 ### Task3: Sequence/UI/delivery
 Files: CameraComparison, MainActivity, app/build.gradle.kts, UI/sequence tests, docs and deliverables.
-- [ ] Tests: two-step failed240 retains120, cancellation/duplicates/wrong camera; new UI button permission denial/background recovery.
-- [ ] Observe RED, implement one-button sequence and honest result copy; full test/assemble/lint GREEN, commit.
-- [ ] Independent final review, fix important findings using failing regressions then full checks; verify signature/version, APK/checksum, docs.
+- [x] Tests: two-step failed240 retains120, cancellation/duplicates/wrong camera; new UI button permission denial/background recovery.
+- [x] Observe RED, implement one-button sequence and honest result copy; full test/assemble/lint GREEN, commit.
+- [x] Independent final review, fix important findings using failing regressions then full checks; verify signature/version, APK/checksum, docs.
 - Delivery gate: fresh-fetch, fast-forward existing main, verify remote APK bytes and preserved root README before final response.

@@ -1,0 +1,181 @@
+{
+  "version": "0.1.5-probe",
+  "sourceCommit": "b9a7968fd2e4627676e8c35adff18c3206ea0a7d",
+  "testCount": 111,
+  "suites": [
+    {
+      "module": "core",
+      "suite": "cn.tracktimer.core.ClockSyncTest",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "core",
+      "suite": "cn.tracktimer.core.FrameAnalysisTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "core",
+      "suite": "cn.tracktimer.core.ResourceGateTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "core",
+      "suite": "cn.tracktimer.core.SyncProtocolTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "core",
+      "suite": "cn.tracktimer.core.ToneDetectorTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraComparisonTest",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraFrameReaderTest",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraModesTest",
+      "tests": 15,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraProbeTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraSessionSetupTest",
+      "tests": 13,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.CameraStatisticsTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.EncodedOutputTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.EncodedSamplesTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.FrameDrainTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.HighSpeedCalibrationTest",
+      "tests": 6,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.HighSpeedComparisonTest",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.MainActivityTest",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.ReportStoreTest",
+      "tests": 2,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.TestTonePlayerTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    {
+      "module": "app",
+      "suite": "cn.tracktimer.app.VideoQualityTest",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    }
+  ],
+  "lint": [
+    {
+      "id": "LockedOrientationActivity",
+      "severity": "Warning"
+    },
+    {
+      "id": "DiscouragedApi",
+      "severity": "Warning"
+    },
+    {
+      "id": "UsableSpace",
+      "severity": "Warning"
+    }
+  ]
+}

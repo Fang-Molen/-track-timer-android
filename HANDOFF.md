@@ -15,7 +15,7 @@
 
 ## 二、当前交付到底做到哪里
 
-已完成 **阶段 A：原生 Android 设备验证版 0.1.4**，包名 `cn.tracktimer.app`，版本 `0.1.4-probe`。当前不生成运动员的跑步成绩。
+已完成 **阶段 A：原生 Android 设备验证版 0.1.5**，包名 `cn.tracktimer.app`，版本 `0.1.5-probe`。当前不生成运动员的跑步成绩。
 
 已实现：
 
@@ -143,7 +143,7 @@ APK 输出为 `app/build/outputs/apk/debug/app-debug.apk`。
 
 仓库目录：
 
-- `deliverables/track-timer-0.1.4-probe.apk`：最新可安装 APK，签名与 0.1.0 相同，可覆盖升级。
+- `deliverables/track-timer-0.1.5-probe.apk`：最新可安装 APK，签名与 0.1.0 相同，可覆盖升级。
 - 根 `README.md`：用户原文件，保持不变。
 - `track-timer/`：完整 Android 项目。
 - `HANDOFF.md`：本文。
@@ -186,7 +186,7 @@ GitHub 可见性观察：2026-11-01 本次交付前 API 返回 private=false（�
 
 报告新增PRIVATE尺寸/帧周期、公开流用途、手动控制范围、能力列表、省电/温度状态和每帧ISO/降噪/防抖等参数。用户只需覆盖安装，点一键排查，完成后导出小日志。源码/签名/测试详见verification/VALIDATION-0.1.3.md，原始用户日志与媒体没有上传。
 
-## 十一、0.1.4 普通60帧用途/手动传感器对照：最新状态
+## 十一、0.1.4 普通60帧用途/手动传感器对照（历史）
 
 用户0.1.3一键报告表明：同相机0，720p/1080p纯PRIVATE采集和录像均30.002fps。高速录制视频约119.715fps，元数据29.929次/秒，帧号每次增加4。独立检查原MP4：1080p普通视频296帧/9.866秒；720p高速视频1176帧/9.823秒，像素哈希均不同，运动段逐帧变化，未发现简单30→120四倍重复。高速统计旧0/5具有误导性；普通30判断正确。原始文件仅本地分析，未上传仓库。
 
@@ -195,3 +195,13 @@ GitHub 可见性观察：2026-11-01 本次交付前 API 返回 private=false（�
 高速报告保留captureFps兼容字段但标明metadata_samples_per_second；sensorFps/captureFpsAchieved/requestedFpsAchieved/diagnosticFpsReached对高速为null。metadataSampleFps、encodedFps、videoRateReached、frameNumberStepCounts及frameNumberSpanFpsEstimate分别表达观测与推算。高速不再用稀疏元数据估算丢帧；视频率达标不证明逐帧时间映射。汇总普通0–8项与高速视频结果分开，避免0/9误导。
 
 安装后点一键排查（约2分钟），保持前台/固定/光线充足，全程无预览，结束发小日志。手动曝光可能偏暗/偏亮是该实验预期限制。旧纯采集和手动选择菜单保留，音频未改。普通60是否因此可用待新日志；不能先判定系统限制或厂商封锁。
+
+## 十二、0.1.5 高速时钟校准：最新状态
+
+用户接受120帧正常速度录像，并要求直接开发120/240帧校准小测试。0.1.4复测runId1fe5a1ba-e083-4f1a-b1dd-eb7ed6a916ad九项完成无错误：普通8项30.002fps，手动AE_OFF/8ms/ISO800生效，但16.67ms请求返回33.35ms。高速视频119.714fps，元数据29.929次/秒，帧号每次+4。此次原始日志仅本地分析，未上传仓库。
+
+0.1.5新增同相机720p120/240各10秒一键校准，使用MediaCodec Surface+MediaMuxer，保留原始输出PTS及观测系统时间，MP4仅减去第一帧PTS以保持正常播放速度。Android13+输出设置TIMESTAMP_BASE_SENSOR；AOSP文档明确编码表面默认可能用MONOTONIC而传感器REALTIME是elapsedRealtime，不能默认二者同源。旧版本默认输出基准仍需观测验证。
+
+报告clockCalibration区分采样匹配、MP4时间保存和文件到本机时钟的观察结果。要求REALTIME声明、直接匹配容差2微秒、至少30样本及5秒、覆盖80%编码跨度，错误/取消/无EOS不能通过。只有采样匹配和MP4逐帧保留均满足时给fileZeroLocalElapsedNs；没有插值传感器时刻、没有拟合偏移强行通过。captureToEncodedMappingVerified和precisionVerified保持false。容差不是物理误差。
+
+先一台手机运行新按钮、发小日志。现有48次双机对时保持独立，报告clockSession用于后续关联，不能把历史网络偏移自动套用。240支持来自设备声明，实际帧率/编码兼容性和光学精度仍待真机日志。详细源码/测试/签名见verification/VALIDATION-0.1.5.md。

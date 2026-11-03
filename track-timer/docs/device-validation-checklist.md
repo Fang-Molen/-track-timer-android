@@ -1,3 +1,14 @@
+# 0.1.5 优先复测
+
+- 覆盖安装0.1.5-probe；一台手机固定、光线充足、保持前台。
+- 点“一键校准120/240帧（约30秒）”，等待两档各10秒，无预览。
+- 检查实际视频帧率与采样时间对齐两项；240失败不替换，也保留120记录。
+- 导出小日志。检查codecPtsNs、codecObservedElapsedNs、frames及encodedPtsNs，勿从recordStartCallbackElapsedNs推算首帧。
+- 比较outputTimestampBase、cameraClockRealtime、codecEosReached、codecError；fileZeroLocalElapsedNs仅在相应观察门槛满足时存在。
+- 2微秒匹配容差不是光学误差；稀疏元数据不能证明每一帧。精度字段仍false。
+
+以下为历史检查表。
+
 # 0.1.4 优先复测
 
 - 覆盖安装0.1.4-probe；固定手机，光线充足，保持App前台。
