@@ -14,6 +14,14 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
+// Robolectric models byte writes but not AudioTrack's static short[] PCM path.
+@org.robolectric.annotation.Implements(android.media.AudioTrack::class)
+class StaticPcmTrackShadow:org.robolectric.shadows.ShadowAudioTrack() {
+    @org.robolectric.annotation.Implementation
+    fun native_write_short(data:ShortArray,offset:Int,size:Int,format:Int,blocking:Boolean):Int=size
+    // Base shadow calls an AudioFormat method absent on API28; model partial progress directly.
+    @org.robolectric.annotation.Implementation override fun getPlaybackHeadPosition():Int=100
+}
 @RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
 class FieldActivitiesTest {
     private fun views(v:View):List<View> = listOf(v)+(if(v is ViewGroup)(0 until v.childCount).flatMap{views(v.getChildAt(it))}else emptyList())
@@ -35,6 +43,31 @@ class FieldActivitiesTest {
             c.pause();a.onRequestPermissionsResult(91,req.requestedPermissions,intArrayOf(PackageManager.PERMISSION_GRANTED))
             assertTrue(b.isEnabled);assertTrue(views(a.window.decorView).filterIsInstance<TextView>().any{it.text=="尚未开始"})
         }finally{c.stop().destroy()}
+    }
+    @Test @Config(shadows=[StaticPcmTrackShadow::class]) fun asynchronousCueFocusLossCancelsTheFiredRace() {
+        val c=Robolectric.buildActivity(StartActivity::class.java).setup()
+        try {
+            val a=c.get();val v=views(a.window.decorView)
+            val manager=a.getSystemService(android.media.AudioManager::class.java)
+            manager.setStreamVolume(android.media.AudioManager.STREAM_MUSIC,5,0)
+            v.filterIsInstance<Button>().first{it.text=="开启起点服务"}.performClick()
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofSeconds(1))
+            val address=v.filterIsInstance<TextView>().first{it.text.contains("配对码：")}.text.toString()
+            val token=Regex("配对码：([0-9]{6})").find(address)!!.groupValues[1]
+            val cal=cn.tracktimer.core.SyncClient.measure("127.0.0.1",19119,token,"finish",android.os.SystemClock::elapsedRealtimeNanos,8).calibration
+            cn.tracktimer.core.RaceClient.request("127.0.0.1",19119,token,cal.remoteSession,"finish","cue-trial","READY")
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(250))
+            val fire=v.filterIsInstance<Button>().first{it.text=="发令一次"};assertTrue(fire.isEnabled);fire.performClick()
+            val fired=cn.tracktimer.core.RaceClient.request("127.0.0.1",19119,token,cal.remoteSession,"finish","cue-trial","POLL")
+            assertEquals(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()?.toString(),cn.tracktimer.core.RacePhase.FIRED,fired.phase)
+            val focus=checkNotNull(shadowOf(manager).lastAudioFocusRequest).listener
+            focus.onAudioFocusChange(android.media.AudioManager.AUDIOFOCUS_LOSS_TRANSIENT)
+            shadowOf(android.os.Looper.getMainLooper()).idleFor(java.time.Duration.ofMillis(700))
+            val reply=cn.tracktimer.core.RaceClient.request("127.0.0.1",19119,token,cal.remoteSession,"finish","cue-trial","POLL")
+            assertEquals(org.robolectric.shadows.ShadowToast.getTextOfLatestToast()?.toString(),cn.tracktimer.core.RacePhase.ABORTED,reply.phase)
+            assertTrue(ReportStore(a).directory.listFiles().orEmpty().filter{it.name.startsWith("field_cue_")}.any{
+                val j=org.json.JSONObject(it.readText());j.optString("raceId")=="cue-trial" && j.optBoolean("focusLost") && !j.optBoolean("cuePlaybackComplete")})
+        } finally {c.pause().stop().destroy()}
     }
     @Test fun starterCannotFireWithoutReadyAndReleasesPortOnPause() {
         val c=Robolectric.buildActivity(StartActivity::class.java).setup()

@@ -9,7 +9,7 @@ class RaceProtocolTest {
         assertThrows(IllegalStateException::class.java){c.fire()}
         c.handle("host","finish","run","READY");assertTrue(c.current()!!.readyFresh)
         now+=2_500_000_001L;assertThrows(IllegalStateException::class.java){c.fire()}
-        c.handle("host","finish","run","POLL");assertTrue(c.current()!!.readyFresh)
+        c.handle("host","finish","run","POLL");assertFalse(c.current()!!.readyFresh)
         c.handle("host","finish","run","HOLD");c.handle("host","finish","run","POLL")
         assertFalse(c.current()!!.readyFresh);assertThrows(IllegalStateException::class.java){c.fire()}
         c.handle("host","finish","run","READY");assertEquals(now,c.fire().startNs)
@@ -33,6 +33,19 @@ class RaceProtocolTest {
         c.cancelActive();assertEquals(RacePhase.ABORTED,c.current()!!.phase)
         assertThrows(IllegalStateException::class.java){c.fire()}
         c.handle("host","finish","next","READY");assertTrue(c.current()!!.readyFresh)
+    }
+    @Test fun requiredCueMustCompleteBeforeDoneAndLateFailureTargetsOnlyItsRace() {
+        val c=RaceCoordinator("host",{10_000_000_000L},requireCue=true)
+        c.handle("host","finish","run","READY");c.fire();c.handle("host","finish","run","ACK")
+        assertThrows(IllegalArgumentException::class.java){c.handle("host","finish","run","DONE")}
+        c.confirmCue("run",false)
+        assertEquals(RacePhase.ABORTED,c.current()!!.phase)
+        assertThrows(IllegalArgumentException::class.java){c.handle("host","finish","run","DONE")}
+        c.handle("host","finish","next","READY");c.fire()
+        c.confirmCue("run",true);assertEquals(RacePhase.FIRED,c.current()!!.phase)
+        assertThrows(IllegalArgumentException::class.java){c.handle("host","finish","next","DONE")}
+        c.confirmCue("next",true);c.handle("host","finish","next","ACK")
+        assertEquals(RacePhase.DONE,c.handle("host","finish","next","DONE").phase)
     }
     @Test fun realTcpPairingAndCalibrationShareTheSameHostSession() {
         val clock={System.nanoTime()};val c=RaceCoordinator("host",clock)

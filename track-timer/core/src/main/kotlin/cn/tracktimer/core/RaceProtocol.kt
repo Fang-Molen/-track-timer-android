@@ -9,8 +9,8 @@ data class RaceSnapshot(val hostSession:String, val clientSession:String, val ra
     val phase:RacePhase, val startNs:Long, val acknowledged:Boolean, val readyFresh:Boolean)
 
 /** One immutable electronic start per race; READY expires if the receiver stops polling. */
-class RaceCoordinator(private val hostSession:String, private val clock:()->Long) {
-    private data class Entry(var snapshot:RaceSnapshot, var readyAt:Long?)
+class RaceCoordinator(private val hostSession:String, private val clock:()->Long,private val requireCue:Boolean=false) {
+    private data class Entry(var snapshot:RaceSnapshot, var readyAt:Long?,var cueComplete:Boolean)
     private val races=linkedMapOf<String,Entry>()
     private var active:String?=null
     private fun view(e:Entry):RaceSnapshot = e.snapshot.copy(readyFresh=e.snapshot.phase==RacePhase.READY &&
@@ -23,6 +23,13 @@ class RaceCoordinator(private val hostSession:String, private val clock:()->Long
     }
     @Synchronized fun cancelActive() { active?.let(races::get)?.let { if(it.snapshot.phase!=RacePhase.DONE)
         it.snapshot=it.snapshot.copy(phase=RacePhase.ABORTED) } }
+    /** A delayed cue callback is scoped to its original race, never to a newly active race. */
+    @Synchronized fun confirmCue(race:String,complete:Boolean) {
+        val e=races[race] ?: return
+        if(complete && e.snapshot.phase==RacePhase.FIRED)e.cueComplete=true
+        if(!complete && e.snapshot.phase in listOf(RacePhase.FIRED,RacePhase.DONE))
+            e.snapshot=e.snapshot.copy(phase=RacePhase.ABORTED)
+    }
     @Synchronized fun handle(expectedHost:String, client:String, race:String, verb:String):RaceSnapshot {
         require(expectedHost==hostSession){"SESSION_CHANGED"}
         require(listOf(client,race).all { it.matches(Regex("[A-Za-z0-9-]{1,64}")) }){"INVALID_ID"}
@@ -30,17 +37,17 @@ class RaceCoordinator(private val hostSession:String, private val clock:()->Long
         if(e==null) {
             require(verb=="READY"){"UNKNOWN_RACE"}
             require(current()?.phase !in listOf(RacePhase.READY,RacePhase.FIRED)){"BUSY"}
-            e=Entry(RaceSnapshot(hostSession,client,race,RacePhase.READY,0,false,false),clock())
+            e=Entry(RaceSnapshot(hostSession,client,race,RacePhase.READY,0,false,false),clock(),!requireCue)
             races[race]=e;active=race
             while(races.size>32) races.remove(races.keys.first())
         }
         require(e.snapshot.clientSession==client){"OWNER_CHANGED"}
         when(verb) {
             "READY" -> if(e.snapshot.phase==RacePhase.READY)e.readyAt=clock()
-            "POLL" -> if(e.snapshot.phase==RacePhase.READY && e.readyAt!=null)e.readyAt=clock()
+            "POLL" -> if(e.snapshot.phase==RacePhase.READY && view(e).readyFresh)e.readyAt=clock()
             "HOLD" -> if(e.snapshot.phase==RacePhase.READY)e.readyAt=null
             "ACK" -> {require(e.snapshot.phase in listOf(RacePhase.FIRED,RacePhase.DONE)){"NOT_FIRED"};e.snapshot=e.snapshot.copy(acknowledged=true)}
-            "DONE" -> {require(e.snapshot.acknowledged && e.snapshot.phase in listOf(RacePhase.FIRED,RacePhase.DONE)){"NOT_ACKNOWLEDGED"};e.snapshot=e.snapshot.copy(phase=RacePhase.DONE)}
+            "DONE" -> {require(e.snapshot.acknowledged && e.snapshot.phase in listOf(RacePhase.FIRED,RacePhase.DONE)){"NOT_ACKNOWLEDGED"};require(e.cueComplete){"CUE_PENDING"};e.snapshot=e.snapshot.copy(phase=RacePhase.DONE)}
             "CANCEL" -> if(e.snapshot.phase!=RacePhase.DONE)e.snapshot=e.snapshot.copy(phase=RacePhase.ABORTED)
             else -> throw IllegalArgumentException("UNKNOWN_COMMAND")
         }
