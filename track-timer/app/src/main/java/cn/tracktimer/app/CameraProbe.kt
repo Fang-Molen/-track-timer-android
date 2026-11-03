@@ -47,6 +47,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private val startupTimeout = Runnable { finish("等待相机打开或配置超时，请换一个模式并导出日志。") }
     private var configuredOutputCount = 0
     private var requestCaptureIntent: Int? = null
+    private var requestedControls: JSONObject? = null
 
     @SuppressLint("MissingPermission")
     fun start() {
@@ -102,6 +103,12 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             configuredOutputCount = outputs.size
             val request = CameraSessionSetup.recordRequest(device, c, outputs)
             requestCaptureIntent = request[CaptureRequest.CONTROL_CAPTURE_INTENT]
+            requestedControls = JSONObject()
+                .put("controlMode", request[CaptureRequest.CONTROL_MODE] ?: JSONObject.NULL)
+                .put("aeMode", request[CaptureRequest.CONTROL_AE_MODE] ?: JSONObject.NULL)
+                .put("exposureNs", request[CaptureRequest.SENSOR_EXPOSURE_TIME] ?: JSONObject.NULL)
+                .put("frameDurationNs", request[CaptureRequest.SENSOR_FRAME_DURATION] ?: JSONObject.NULL)
+                .put("sensitivityIso", request[CaptureRequest.SENSOR_SENSITIVITY] ?: JSONObject.NULL)
             sessionParametersSubmitted = CameraSessionSetup.open(device, outputs, request, object : CameraCaptureSession.StateCallback() {
                 override fun onConfigured(s: CameraCaptureSession) {
                     if (finished) { s.close(); return }
@@ -141,7 +148,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                     } catch (e: Exception) { finish(e.message ?: "无法开始录像") }
                 }
                 override fun onConfigureFailed(session: CameraCaptureSession) { finish("此分辨率/帧率组合无法启动，请导出设备报告。") }
-            }, handler, c.highSpeed)
+            }, handler, c.highSpeed, c.streamUseCase)
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
     }
 
@@ -171,7 +178,11 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
             .put("requestedFps", config?.targetFps ?: mode.fps ?: JSONObject.NULL)
             .put("runId", runId ?: JSONObject.NULL).put("requestedCameraId", forcedCameraId ?: JSONObject.NULL)
             .put("cancelled", cancelledByUser).put("captureOnly", mode.captureOnly).put("consumerType", if (mode.captureOnly) "ImageReader_PRIVATE" else "MediaRecorder")
-            .put("streamUseCase", "DEFAULT").put("runtimeConditionsStart", conditionsAtStart ?: JSONObject.NULL)
+            .put("streamUseCase", if (mode.videoUseCase) "VIDEO_RECORD" else "DEFAULT")
+            .put("requestedStreamUseCase", if (mode.videoUseCase) 3L else 0L)
+            .put("outputUseCaseSubmitted", mode.videoUseCase && sessionParametersSubmitted)
+            .put("manualSensorRequested", mode.manual).put("requestedControls", requestedControls ?: JSONObject.NULL)
+            .put("runtimeConditionsStart", conditionsAtStart ?: JSONObject.NULL)
             .put("runtimeConditionsEnd", runCatching { DeviceReport.runtimeConditions(context) }.getOrNull() ?: JSONObject.NULL)
             .put("size", config?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL).put("cameraId", config?.id ?: JSONObject.NULL)
             .put("previewEnabled", mode.previewEnabled).put("outputSurfaceCount", configuredOutputCount)

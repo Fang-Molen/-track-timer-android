@@ -110,6 +110,51 @@ class CameraSessionSetupTest {
         }
     }
 
+    @Test fun manualRequestDisablesAeAndSubmitsAllThreeSensorControls() {
+        withCamera { camera, outputs, _ ->
+            val c = CameraConfig("0", Size(1280, 720), Range(60, 60), 60, true, 90,
+                manualSensor = ManualSensorSettings(8_000_000L, 16_666_667L, 800))
+            CameraSessionSetup.recordRequest(camera, c, outputs)
+            val b = RecordingCameraShadow.lastBuilder!!
+            assertEquals(CaptureRequest.CONTROL_AE_MODE_OFF, b[CaptureRequest.CONTROL_AE_MODE])
+            assertEquals(CaptureRequest.CONTROL_MODE_AUTO, b[CaptureRequest.CONTROL_MODE])
+            assertEquals(8_000_000L, b[CaptureRequest.SENSOR_EXPOSURE_TIME])
+            assertEquals(16_666_667L, b[CaptureRequest.SENSOR_FRAME_DURATION])
+            assertEquals(800, b[CaptureRequest.SENSOR_SENSITIVITY])
+        }
+    }
+    @Test @Config(sdk = [33]) fun streamUseCaseIsOnTheOutputBeforeCreatingTheSession() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(60, 60), 60, true, 90)
+            val request = CameraSessionSetup.recordRequest(camera, c, listOf(outputs[0]))
+            CameraSessionSetup.open(camera, listOf(outputs[0]), request, callback, handler, streamUseCase = 3L)
+            val s = RecordingCameraShadow.lastConfiguration!!
+            assertEquals(1, s.outputConfigurations.size)
+            assertEquals(3L, s.outputConfigurations.single().streamUseCase)
+            assertEquals(SessionConfiguration.SESSION_REGULAR, s.sessionType)
+        }
+    }
+    @Test fun oldApiRejectsExplicitUseCaseInsteadOfIgnoringIt() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(60, 60), 60, true, 90)
+            val request = CameraSessionSetup.recordRequest(camera, c, outputs)
+            assertThrows(IllegalArgumentException::class.java) {
+                CameraSessionSetup.open(camera, listOf(outputs[0]), request, callback, handler, streamUseCase = 3L)
+            }
+            assertNull(RecordingCameraShadow.lastConfiguration)
+        }
+    }
+    @Test @Config(sdk = [33]) fun highSpeedDoesNotReceiveTheNormalRecordingUseCase() {
+        withCamera { camera, outputs, handler ->
+            val c = CameraConfig("0", Size(1280, 720), Range(120, 120), 120, true, 90)
+            val request = CameraSessionSetup.recordRequest(camera, c, outputs)
+            assertThrows(IllegalArgumentException::class.java) {
+                CameraSessionSetup.open(camera, listOf(outputs[0]), request, callback, handler, highSpeed = true, streamUseCase = 3L)
+            }
+            assertNull(RecordingCameraShadow.lastConfiguration)
+        }
+    }
+
     private val callback = object : CameraCaptureSession.StateCallback() {
         override fun onConfigured(session: CameraCaptureSession) = Unit
         override fun onConfigureFailed(session: CameraCaptureSession) = Unit

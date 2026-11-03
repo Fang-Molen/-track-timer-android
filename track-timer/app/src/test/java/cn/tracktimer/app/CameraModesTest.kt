@@ -18,6 +18,40 @@ class CameraModesTest {
         highSpeed: Map<Size, List<Range<Int>>> = emptyMap()) = CameraCapabilities("0",
         mapOf(hd to 16_666_666L, full to 16_666_666L), preview, ranges, highSpeed, true, 90, true)
 
+    private fun manualCaps() = caps().copy(manualSensorSupported = true,
+        exposureRangeNs = Range(100_000L, 100_000_000L), sensitivityRange = Range(50, 19200), maxFrameDurationNs = 100_000_000L)
+
+    @Test @Config(sdk = [33]) fun explicitUseCaseNeedsAdvertisedSupportAndPreservesTheControl() {
+        assertNull(CameraModes.select(listOf(caps()), CameraTestMode.HD60_VIDEO_USE_CASE))
+        val c = CameraModes.select(listOf(caps().copy(streamUseCases = setOf(0L, 3L))), CameraTestMode.HD60_VIDEO_USE_CASE)!!
+        assertEquals(3L, c.streamUseCase); assertNull(c.manualSensor); assertFalse(c.previewEnabled)
+        assertEquals(hd, c.size)
+    }
+    @Test fun olderApiDoesNotPretendToSetAStreamUseCase() {
+        assertNull(CameraModes.select(listOf(caps().copy(streamUseCases = setOf(3L))), CameraTestMode.HD60_VIDEO_USE_CASE))
+    }
+    @Test fun manualSensorRequiresCapabilitiesAndValidRanges() {
+        assertNull(CameraModes.select(listOf(caps()), CameraTestMode.HD60_MANUAL))
+        val supported = manualCaps()
+        val c = CameraModes.select(listOf(supported), CameraTestMode.HD60_MANUAL)!!
+        assertEquals(ManualSensorSettings(8_000_000L, 16_666_667L, 800), c.manualSensor)
+        assertEquals(0L, c.streamUseCase)
+        for (unsupported in listOf(supported.copy(manualSensorSupported = false),
+            supported.copy(exposureRangeNs = Range(100_000L, 4_000_000L)),
+            supported.copy(maxFrameDurationNs = 10_000_000L), supported.copy(sensitivityRange = null))) {
+            assertNull(CameraModes.select(listOf(unsupported), CameraTestMode.HD60_MANUAL))
+        }
+    }
+    @Test fun manualIsoClampsOnlyToTheAdvertisedRange() {
+        val c = CameraModes.select(listOf(manualCaps().copy(sensitivityRange = Range(1000, 6400))), CameraTestMode.HD60_MANUAL)!!
+        assertEquals(1000, c.manualSensor!!.sensitivityIso)
+    }
+    @Test @Config(sdk = [33]) fun combinedModeRequiresBothIndependentCapabilities() {
+        val caps = manualCaps()
+        assertNull(CameraModes.select(listOf(caps), CameraTestMode.FHD60_MANUAL_VIDEO_USE_CASE))
+        val c = CameraModes.select(listOf(caps.copy(streamUseCases = setOf(3L))), CameraTestMode.FHD60_MANUAL_VIDEO_USE_CASE)!!
+        assertEquals(full, c.size); assertEquals(3L, c.streamUseCase); assertNotNull(c.manualSensor)
+    }
     @Test fun cameraOnlyUsesPrivateCapabilitiesWithoutRecorderOrPreview() {
         val device = caps(preview = emptyMap()).copy(recorderSizes = emptyMap(), privateSizes = mapOf(hd to 16_666_666L))
         val c = CameraModes.select(listOf(device), CameraTestMode.HD60_CAPTURE_ONLY)!!

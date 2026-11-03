@@ -43,7 +43,14 @@ object DeviceReport {
                 c[CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE] == CameraCharacteristics.SENSOR_INFO_TIMESTAMP_SOURCE_REALTIME,
                 c[CameraCharacteristics.SENSOR_ORIENTATION] ?: 0,
                 Build.VERSION.SDK_INT >= 28 && c.availableSessionKeys?.contains(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE) == true,
-                map.getOutputSizes(ImageFormat.PRIVATE)?.associateWith { map.getOutputMinFrameDuration(ImageFormat.PRIVATE, it) }.orEmpty())
+                map.getOutputSizes(ImageFormat.PRIVATE)?.associateWith { map.getOutputMinFrameDuration(ImageFormat.PRIVATE, it) }.orEmpty(),
+                if (Build.VERSION.SDK_INT >= 33) c[CameraCharacteristics.SCALER_AVAILABLE_STREAM_USE_CASES]?.toSet().orEmpty() else emptySet(),
+                c[CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES]?.contains(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR) == true &&
+                    c[CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES]?.contains(CaptureRequest.CONTROL_AE_MODE_OFF) == true &&
+                    c.availableCaptureRequestKeys.orEmpty().containsAll(listOf(CaptureRequest.CONTROL_MODE, CaptureRequest.CONTROL_AE_MODE,
+                        CaptureRequest.SENSOR_EXPOSURE_TIME, CaptureRequest.SENSOR_FRAME_DURATION, CaptureRequest.SENSOR_SENSITIVITY)),
+                c[CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE], c[CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE],
+                c[CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION] ?: 0)
         }
     }
 
@@ -101,6 +108,8 @@ object DeviceReport {
                 .put("exposureTimeRangeNs", c[CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE]?.toString() ?: JSONObject.NULL)
                 .put("sensitivityRange", c[CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE]?.toString() ?: JSONObject.NULL)
                 .put("maxFrameDurationNs", c[CameraCharacteristics.SENSOR_INFO_MAX_FRAME_DURATION] ?: JSONObject.NULL)
+                .put("aeModes", JSONArray(c[CameraCharacteristics.CONTROL_AE_AVAILABLE_MODES]?.toList().orEmpty()))
+                .put("availableCaptureRequestKeys", JSONArray(c.availableCaptureRequestKeys?.map { it.name }.orEmpty()))
                 .put("availableSessionKeys", if (Build.VERSION.SDK_INT >= 28)
                     JSONArray(c.availableSessionKeys?.map { it.name }.orEmpty()) else JSONArray()))
         }
@@ -114,7 +123,7 @@ object DeviceReport {
         val testModes = JSONArray(CameraTestMode.entries.map { mode ->
             val c = capabilities.getOrNull()?.let { CameraModes.select(it, mode) }
             JSONObject().put("mode", mode.name).put("label", mode.label)
-                .put("advertisedSupported", c != null).put("previewEnabled", mode.previewEnabled)
+                .put("advertisedSupported", c != null).put("videoUseCaseRequested", mode.videoUseCase).put("manualSensorRequested", mode.manual).put("previewEnabled", mode.previewEnabled)
                 .put("highSpeed", mode.highSpeed).put("captureOnly", mode.captureOnly).put("requestedFps", c?.targetFps ?: mode.fps ?: JSONObject.NULL)
                 .put("size", c?.size?.toString() ?: mode.size?.toString() ?: JSONObject.NULL)
         })
