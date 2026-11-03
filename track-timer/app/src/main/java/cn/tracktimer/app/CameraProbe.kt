@@ -229,7 +229,6 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         }
         report.put("error", problem ?: JSONObject.NULL)
         updateFrameRateStatus(report)
-        report.put("diagnosticFpsReached", CameraComparison.reached(report))
         runCatching { store.saveJson("camera", report) }.onFailure { report.put("saveError", it.message) }
         main.post { onDone(report) }
         worker.quitSafely()
@@ -259,17 +258,6 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     private fun status(message: String) { main.post { onStatus(message) } }
 
     companion object {
-        internal fun updateFrameRateStatus(report: JSONObject) {
-            val requested = report.optInt("requestedFps", 0)
-            fun reached(key: String): Boolean {
-                val measured = report.optDouble(key)
-                return requested > 0 && measured.isFinite() && measured >= requested * .9
-            }
-            val capture = reached("captureFps")
-            val encoded = !report.optBoolean("captureOnly") && reached("encodedFps")
-            report.put("captureFpsAchieved", capture).put("encodedFpsAchieved", encoded)
-                .put("imageFpsAchieved", report.optBoolean("captureOnly") && reached("imageFps"))
-                .put("requestedFpsAchieved", CameraComparison.reached(report))
-        }
+        internal fun updateFrameRateStatus(report: JSONObject) = CameraStatistics.annotate(report)
     }
 }

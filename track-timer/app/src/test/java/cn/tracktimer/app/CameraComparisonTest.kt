@@ -17,14 +17,15 @@ class CameraComparisonTest {
         .put("captureSpanNs", span).put(if (mode.captureOnly) "imageSpanNs" else "encodedSpanNs", span)
         .put("requestedFps", mode.fps).put("error", error ?: JSONObject.NULL)
 
-    @Test fun cameraOnlySuccessDoesNotClaimTheVideoEncoderIsProvenFaulty() {
+    @Test fun singleFactorImprovementIsRecordedWithoutClaimingARootCause() {
         val run = CameraComparison("0")
-        run.accept(report(CameraTestMode.HD60_CAPTURE_ONLY))
         run.accept(report(CameraTestMode.HD60_RECORD_ONLY, 30.0, 30.0))
+        run.accept(report(CameraTestMode.HD60_VIDEO_USE_CASE))
         val summary = run.report()
-        assertEquals("output_path_difference", summary.getJSONArray("pairs").getJSONObject(0).getString("finding"))
+        val pair = summary.getJSONArray("pairs").getJSONObject(0)
+        assertEquals("stream_use_case", pair.getString("factor"))
+        assertEquals("test_reached_only", pair.getString("finding"))
         assertFalse(summary.getBoolean("rootCauseVerified"))
-        assertTrue(summary.getString("note").contains("不同"))
     }
     @Test fun shortMissingAndFailedMeasurementsCannotPass() {
         val good = report(CameraTestMode.HD60_CAPTURE_ONLY)
@@ -36,33 +37,41 @@ class CameraComparisonTest {
     }
     @Test fun failuresAdvanceButCancelledOrDuplicateCallbacksNeverAdvance() {
         val run = CameraComparison("0")
-        assertEquals(CameraTestMode.HD60_CAPTURE_ONLY, run.current)
-        assertTrue(run.accept(report(CameraTestMode.HD60_CAPTURE_ONLY, error = "unsupported")))
         assertEquals(CameraTestMode.HD60_RECORD_ONLY, run.current)
-        assertFalse(run.accept(report(CameraTestMode.HD60_CAPTURE_ONLY)))
+        assertTrue(run.accept(report(CameraTestMode.HD60_RECORD_ONLY, error = "unsupported")))
+        assertEquals(CameraTestMode.HD60_VIDEO_USE_CASE, run.current)
+        assertFalse(run.accept(report(CameraTestMode.HD60_RECORD_ONLY)))
         run.cancel()
         assertNull(run.current)
-        assertFalse(run.accept(report(CameraTestMode.HD60_RECORD_ONLY)))
+        assertFalse(run.accept(report(CameraTestMode.HD60_VIDEO_USE_CASE)))
         assertTrue(run.report().getBoolean("cancelled"))
     }
     @Test fun reportsFromAnotherCameraCannotProduceAComparison() {
         val run = CameraComparison("0")
-        val wrong = report(CameraTestMode.HD60_CAPTURE_ONLY).put("cameraId", "2")
+        val wrong = report(CameraTestMode.HD60_RECORD_ONLY).put("cameraId", "2")
         assertTrue(run.accept(wrong))
         assertTrue(run.report().getJSONArray("steps").getJSONObject(0).getString("error").contains("相机"))
         assertFalse(CameraComparison.reached(wrong))
     }
-    @Test fun completeRunKeepsFiveOrderedStepsAndHighSpeedSeparate() {
+    @Test fun nineStepRunSeparatesEightOrdinaryExperimentsFromHighSpeedVideoEvidence() {
         val run = CameraComparison("0")
-        repeat(5) {
-            val mode = checkNotNull(run.current)
-            assertTrue(run.accept(report(mode, mode.fps!!.toDouble(), mode.fps.toDouble())))
+        val expected = listOf(CameraTestMode.HD60_RECORD_ONLY, CameraTestMode.HD60_VIDEO_USE_CASE,
+            CameraTestMode.HD60_MANUAL, CameraTestMode.HD60_MANUAL_VIDEO_USE_CASE,
+            CameraTestMode.FHD60_RECORD_ONLY, CameraTestMode.FHD60_VIDEO_USE_CASE,
+            CameraTestMode.FHD60_MANUAL, CameraTestMode.FHD60_MANUAL_VIDEO_USE_CASE, CameraTestMode.HD120_RECORD_ONLY)
+        expected.forEach { mode ->
+            assertEquals(mode, run.current)
+            val r = report(mode, 30.0, if (mode.highSpeed) 119.72 else 30.0)
+                .put("sessionType", if (mode.highSpeed) "constrained_high_speed" else "regular")
+            assertTrue(run.accept(r))
         }
         assertNull(run.current)
         val summary = run.report()
-        assertEquals(5, summary.getJSONArray("steps").length())
-        assertEquals(2, summary.getJSONArray("pairs").length())
-        assertTrue(summary.getBoolean("completed"))
-        assertFalse(summary.getBoolean("precisionVerified"))
+        assertEquals(9, summary.getJSONArray("steps").length())
+        assertEquals(8, summary.getInt("normalTestCount"))
+        assertEquals(0, summary.getInt("normalRateReachedCount"))
+        assertTrue(summary.getBoolean("highSpeedVideoRateReached"))
+        assertEquals(8, summary.getJSONArray("pairs").length())
+        assertTrue(summary.getBoolean("completed")); assertFalse(summary.getBoolean("precisionVerified"))
     }
 }

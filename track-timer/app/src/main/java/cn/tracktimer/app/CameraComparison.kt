@@ -22,40 +22,46 @@ class CameraComparison(val cameraId: String, val id: String = UUID.randomUUID().
     fun cancel() { interruptedMode = current?.name; cancelled = true }
 
     fun report(): JSONObject {
-        fun pair(a: CameraTestMode, b: CameraTestMode): JSONObject {
+        fun pair(a: CameraTestMode, b: CameraTestMode, factor: String): JSONObject {
             val first = steps.firstOrNull { it.optString("testMode") == a.name }
             val second = steps.firstOrNull { it.optString("testMode") == b.name }
+            fun usable(r: JSONObject) = CameraStatistics.usable(r, "capture") && CameraStatistics.usable(r, "encoded")
             val finding = when {
                 first == null || second == null || !usable(first) || !usable(second) -> "data_unavailable"
                 reached(first) && reached(second) -> "both_reached"
-                reached(first) -> "output_path_difference"
-                reached(second) -> "camera_only_lower"
+                reached(second) -> "test_reached_only"
+                reached(first) -> "baseline_reached_only"
                 else -> "both_below_target"
             }
-            return JSONObject().put("size", a.size.toString()).put("finding", finding)
-                .put("captureOnlyMode", a.name).put("recordingMode", b.name)
+            return JSONObject().put("size", a.size.toString()).put("factor", factor).put("finding", finding)
+                .put("baselineMode", a.name).put("testMode", b.name)
         }
-        return JSONObject().put("kind", "camera_comparison").put("runId", id).put("cameraId", cameraId)
+        val pairs = JSONArray()
+        for (group in listOf(modes.take(4), modes.drop(4).take(4))) {
+            pairs.put(pair(group[0], group[1], "stream_use_case"))
+            pairs.put(pair(group[0], group[2], "auto_exposure"))
+            pairs.put(pair(group[1], group[3], "auto_exposure"))
+            pairs.put(pair(group[2], group[3], "stream_use_case"))
+        }
+        val normalCount = steps.count(::reached)
+        val high = steps.firstOrNull { it.optString("testMode") == CameraTestMode.HD120_RECORD_ONLY.name }
+        return JSONObject().put("kind", "camera_comparison").put("comparisonType", "normal60_controls_v2")
+            .put("runId", id).put("cameraId", cameraId)
             .put("cancelled", cancelled).put("interruptedMode", interruptedMode ?: JSONObject.NULL)
             .put("completed", !cancelled && steps.size == modes.size).put("plannedSteps", modes.size)
-            .put("steps", JSONArray(steps)).put("passedStepCount", steps.count(::reached))
-            .put("pairs", JSONArray(listOf(pair(CameraTestMode.HD60_CAPTURE_ONLY, CameraTestMode.HD60_RECORD_ONLY),
-                pair(CameraTestMode.FHD60_CAPTURE_ONLY, CameraTestMode.FHD60_RECORD_ONLY))))
-            .put("rootCauseVerified", false).put("precisionVerified", false)
-            .put("note", "不同Surface消费者可能触发不同相机管线；差异只能指向输出通道/编码相关分支，不能单凭结果认定编码器故障。120帧结果不证明计时精度或批量时间戳映射。")
+            .put("steps", JSONArray(steps)).put("passedStepCount", normalCount)
+            .put("passedStepCountMeaning", "ordinary_sensor_and_consumer_rate_only")
+            .put("normalTestCount", 8).put("normalRateReachedCount", normalCount)
+            .put("highSpeedVideoRateReached", high?.let(CameraStatistics::videoRateReached) ?: false)
+            .put("highSpeedEncodedFps", high?.opt("encodedFps") ?: JSONObject.NULL)
+            .put("pairs", pairs).put("rootCauseVerified", false).put("precisionVerified", false)
+            .put("note", "不同配置结果只提示关联，光线和温度也可能随测试顺序变化。高速单独报告视频采样帧率；不能凭稀疏元数据证明逐帧时间映射或计时精度。")
     }
     companion object {
-        val modes = listOf(CameraTestMode.HD60_CAPTURE_ONLY, CameraTestMode.HD60_RECORD_ONLY,
-            CameraTestMode.FHD60_CAPTURE_ONLY, CameraTestMode.FHD60_RECORD_ONLY, CameraTestMode.HD120_RECORD_ONLY)
-        private fun consumer(report: JSONObject) = if (report.optBoolean("captureOnly")) "image" else "encoded"
-        private fun usable(r: JSONObject): Boolean {
-            if (listOf("error", "imageReaderError", "timestampError", "encodedInspectionError", "imageTimestampError").any { !r.isNull(it) }) return false
-            if (r.optBoolean("cancelled") || r.optInt("imageTimestampsOmitted", 0) > 0) return false
-            return listOf("capture", consumer(r)).all {
-                r.optDouble(it + "Fps").let { fps -> fps.isFinite() && fps > 0 } && r.optLong(it + "SpanNs", 0) >= 5_000_000_000L
-            }
-        }
-        fun reached(r: JSONObject): Boolean = usable(r) && r.optInt("requestedFps", 0) > 0 &&
-            listOf("capture", consumer(r)).all { r.optDouble(it + "Fps") >= r.optInt("requestedFps") * .9 }
+        val modes = listOf(CameraTestMode.HD60_RECORD_ONLY, CameraTestMode.HD60_VIDEO_USE_CASE,
+            CameraTestMode.HD60_MANUAL, CameraTestMode.HD60_MANUAL_VIDEO_USE_CASE,
+            CameraTestMode.FHD60_RECORD_ONLY, CameraTestMode.FHD60_VIDEO_USE_CASE,
+            CameraTestMode.FHD60_MANUAL, CameraTestMode.FHD60_MANUAL_VIDEO_USE_CASE, CameraTestMode.HD120_RECORD_ONLY)
+        fun reached(r: JSONObject): Boolean = CameraStatistics.normalRateReached(r)
     }
 }

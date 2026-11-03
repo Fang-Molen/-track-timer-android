@@ -148,9 +148,9 @@ class MainActivity : Activity() {
 
         val capture = card(page)
         section(capture, "03", "验证采集能力", "手机固定，光线充足。一键排查期间请保持本页前台，暂不进行声音或对时测试。")
-        comparisonButton = button("一键排查60帧（约1分钟）")
+        comparisonButton = button("一键排查60帧（约2分钟）")
         capture.addView(comparisonButton, spaced(12))
-        comparisonStatus = text("自动对照纯采集与正式录像，最后检查120帧高速通道。全程没有预览画面；纯采集只保存时间戳。", 13, muted).apply { setTextIsSelectable(true) }
+        comparisonStatus = text("自动测试720p/1080p的四种设置组合，最后对照120帧高速录像。全程无预览；手动曝光可能偏暗或偏亮，仅用于排查帧率。", 13, muted).apply { setTextIsSelectable(true) }
         capture.addView(comparisonStatus, spaced(8))
         comparisonButton.setOnClickListener {
             if (comparisonStarting || comparison != null) cancelComparison("用户停止排查")
@@ -180,6 +180,7 @@ class MainActivity : Activity() {
                 previewCover.visibility = if (mode.previewEnabled) View.GONE else View.VISIBLE
                 cameraStatus.text = mode.label + "\n" + when {
                     mode.captureOnly -> "只接收相机帧并立即释放；不显示预览，不保存视频。"
+                    mode.manual -> "手动曝光8毫秒、固定帧周期；画面可能偏暗或偏亮，仅用于排查帧率。不显示预览。"
                     !mode.previewEnabled -> "此模式不显示预览；点录制后仍会保存完整视频。"
                     mode.highSpeed -> "实验性高速录像；实际帧率以测量结果为准。"
                     else -> "预览在录像测试时开启；实际帧率以测量结果为准。"
@@ -322,7 +323,10 @@ class MainActivity : Activity() {
         val saved = runCatching { store.saveJson("comparison", summary) }
         if (comparison === run) comparison = null
         comparisonStatus.text = if (summary.optBoolean("cancelled")) "排查已中断，已完成项目保留。"
-            else "自动排查完成：${summary.optInt("passedStepCount")}/${CameraComparison.modes.size} 项达到请求帧率。\n请导出小日志；纯采集达标不等于录像达标，具体原因需结合报告分析。"
+            else "自动排查完成：普通60帧 ${summary.optInt("normalRateReachedCount")}/${summary.optInt("normalTestCount")} 项达到请求。\n" +
+                "高速视频：${number(summary, "highSpeedEncodedFps")} fps；" +
+                (if (summary.optBoolean("highSpeedVideoRateReached")) "视频帧率达到请求，逐帧时间对应待验证。" else "尚未确认视频帧率达到请求。") +
+                "\n请导出小日志分析具体配置。"
         saved.onFailure { comparisonStatus.append("\n汇总保存失败：${it.message}") }
         restorePreviewMode(); updateButtons(); updateReportCount()
     }
@@ -354,12 +358,16 @@ class MainActivity : Activity() {
                 cameraButton.text = "录制 10 秒视频"
                 val consumer = if (mode.captureOnly) "图像消费 ${number(report, "imageFps")}" else "视频 ${number(report, "encodedFps")}"
                 val result = if (!report.isNull("error")) "未完成：${report.optString("error")}" else
-                    "采集 ${number(report, "captureFps")} / $consumer fps"
+                    if (mode.highSpeed) "元数据 ${number(report, "metadataSampleFps")} 次/秒 / $consumer fps"
+                    else "采集 ${number(report, "captureFps")} / $consumer fps"
                 cameraStatus.text = mode.label + "\n" + result + "\n" +
                     (if (!report.isNull("error")) "本项未完整完成，详情已写入日志。"
                     else if (mode.captureOnly) "只保存时间戳，不保存视频。"
                     else if (report.has("videoFile")) "录像已保存；时间映射仍待标定。" else "未获得可用视频文件。") +
-                    (if (!report.optBoolean("diagnosticFpsReached")) "\n尚未确认达到请求帧率（含测量不足5秒）。" else "")
+                    (if (mode.highSpeed) {
+                        if (report.optBoolean("videoRateReached")) "\n视频帧率达到请求；元数据可能批量返回，逐帧时间对应待验证。"
+                        else "\n尚未确认视频帧率达到请求（含错误、取消或不足5秒）。"
+                    } else if (!report.optBoolean("diagnosticFpsReached")) "\n尚未确认达到请求帧率（含测量不足5秒）。" else "")
                 if (report.has("saveError")) cameraStatus.append("\n报告保存失败：${report.optString("saveError")}")
                 cameraHistory[mode] = "${mode.label}\n$result"
                 cameraHistoryStatus.text = cameraHistory.values.joinToString("\n\n")
@@ -470,7 +478,7 @@ class MainActivity : Activity() {
         if (::logExportButton.isInitialized) logExportButton.isEnabled = canExport
         if (::cameraMode.isInitialized) cameraMode.isEnabled = cameraProbe == null && !exportBusy && !running
         if (::comparisonButton.isInitialized) {
-            comparisonButton.text = if (running) "停止自动排查" else "一键排查60帧（约1分钟）"
+            comparisonButton.text = if (running) "停止自动排查" else "一键排查60帧（约2分钟）"
             comparisonButton.isEnabled = running || canExport
         }
         if (::cameraButton.isInitialized) cameraButton.isEnabled = !running && !exportBusy

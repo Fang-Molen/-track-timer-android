@@ -132,7 +132,7 @@ class MainActivityTest {
         try {
             val activity = controller.get()
             val views = descendants(activity.window.decorView)
-            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约2分钟）" }
             start.performClick()
             val request = shadowOf(activity).lastRequestedPermission
             assertArrayEquals(arrayOf(Manifest.permission.CAMERA), request.requestedPermissions)
@@ -156,12 +156,12 @@ class MainActivityTest {
         val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
         try {
             val activity = controller.get()
-            val start = descendants(activity.window.decorView).filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            val start = descendants(activity.window.decorView).filterIsInstance<Button>().first { it.text == "一键排查60帧（约2分钟）" }
             start.performClick()
             val request = shadowOf(activity).lastRequestedPermission
             controller.pause()
             activity.onRequestPermissionsResult(request.requestCode, arrayOf(Manifest.permission.CAMERA), intArrayOf(PackageManager.PERMISSION_GRANTED))
-            assertEquals("一键排查60帧（约1分钟）", start.text.toString())
+            assertEquals("一键排查60帧（约2分钟）", start.text.toString())
             assertTrue(start.isEnabled)
         } finally { controller.stop().destroy() }
     }
@@ -171,11 +171,11 @@ class MainActivityTest {
             val activity = controller.get()
             shadowOf(activity).grantPermissions(Manifest.permission.CAMERA)
             val views = descendants(activity.window.decorView)
-            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约1分钟）" }
+            val start = views.filterIsInstance<Button>().first { it.text == "一键排查60帧（约2分钟）" }
             start.performClick()
             assertFalse(views.filterIsInstance<Button>().first { it.text == "只试听发令音（不录音）" }.isEnabled)
             val deadline = System.nanoTime() + 3_000_000_000L
-            while (start.text != "一键排查60帧（约1分钟）" && System.nanoTime() < deadline) {
+            while (start.text != "一键排查60帧（约2分钟）" && System.nanoTime() < deadline) {
                 shadowOf(Looper.getMainLooper()).idle(); Thread.sleep(5)
             }
             assertTrue(start.isEnabled)
@@ -184,6 +184,17 @@ class MainActivityTest {
             assertTrue(ReportStore(activity).directory.listFiles().orEmpty().any { file ->
                 file.name.startsWith("comparison_") && org.json.JSONObject(file.readText()).has("preparationError")
             })
+        } finally { controller.pause().stop().destroy() }
+    }
+    @Test fun manualModeExplainsFixedExposureAndDoesNotStartHardwareOnSelection() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        try {
+            val activity = controller.get()
+            val views = descendants(activity.window.decorView)
+            views.filterIsInstance<Spinner>().single().setSelection(CameraTestMode.HD60_MANUAL.ordinal)
+            shadowOf(Looper.getMainLooper()).idle()
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("8毫秒") && it.text.contains("偏暗") })
+            assertNull(shadowOf(activity).lastRequestedPermission)
         } finally { controller.pause().stop().destroy() }
     }
     private fun descendants(view: View): List<View> = listOf(view) +
