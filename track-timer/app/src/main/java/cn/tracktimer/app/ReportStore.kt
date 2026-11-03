@@ -34,7 +34,7 @@ class ReportStore(context: Context) {
             zip.putNextEntry(ZipEntry("说明.txt"))
             val contents = if (logsOnly) "仅日志导出，不含音视频；JSON引用的原始录像和录音仍在手机内，可另行完整导出。"
                 else "音频含麦克风原始录音，视频含测试画面。"
-            zip.write("跑道计时 ${BuildConfig.VERSION_NAME} 设备验证报告\n这是设备能力与采集诊断，不是已标定的田径成绩。\n时间单位以字段名为准；时间戳属于报告内标识的时钟。播放输出时间戳标记为 MONOTONIC，不能直接与 BOOTTIME 采集时间相减。\n$contents\n升级前的报告仍保留各自版本。\n".toByteArray())
+            zip.write("跑道计时 ${BuildConfig.VERSION_NAME} 设备验证报告\n包含设备诊断和训练信号计时场次；声音延迟未校准，整套精度未经实地验证。\n时间单位以字段名为准；时间戳属于报告内标识的时钟。播放输出时间戳标记为 MONOTONIC，不能直接与 BOOTTIME 采集时间相减。\n$contents\n升级前的报告仍保留各自版本。\n".toByteArray())
             zip.closeEntry()
             files.forEach { file ->
                 zip.putNextEntry(ZipEntry(file.name)); file.inputStream().use { it.copyTo(zip) }; zip.closeEntry()

@@ -55,7 +55,7 @@ class MainActivityTest {
             assertTrue(views.filterIsInstance<TextView>().any { it.text == "跑道计时" })
             assertTrue(views.filterIsInstance<Button>().any { it.text == "录制 10 秒视频" && it.isEnabled })
             assertTrue(views.filterIsInstance<Button>().any { it.text == "导出诊断报告 ZIP" && it.isEnabled })
-            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("尚不生成跑步成绩") })
+            assertTrue(views.filterIsInstance<TextView>().any { it.text.contains("训练信号计时") })
             assertTrue(views.filterIsInstance<Button>().any { it.text == "只试听发令音（不录音）" && it.isEnabled })
             assertEquals(AudioManager.STREAM_MUSIC, activity.volumeControlStream)
             assertTrue(views.filterIsInstance<Button>().any { it.text == "仅导出日志 ZIP（小文件）" && it.isEnabled })

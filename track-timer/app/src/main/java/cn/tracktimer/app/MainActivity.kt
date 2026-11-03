@@ -105,10 +105,16 @@ class MainActivity : Activity() {
         }
         page.addView(text("TRACK TIMER  /  DEVICE LAB", 11, green, true))
         page.addView(text("跑道计时", 32, ink, true), spaced(8))
-        page.addView(text("双机采集诊断 · ${BuildConfig.VERSION_NAME}", 14, muted), spaced(4))
+        page.addView(text("双机跑道实测 · ${BuildConfig.VERSION_NAME}", 14, muted), spaced(4))
         val intro = card(page)
         intro.addView(text("先把时间测准", 22, ink, true))
-        intro.addView(text("检查相机、录音与双机时差，为训练计时做准备。当前版本只生成诊断报告，尚不生成跑步成绩。", 14, muted), spaced(8))
+        intro.addView(text("先用下方入口做双机训练信号计时；录像后手动逐帧判线。声音延迟尚未校准，不能作为已验证的全自动电计时。", 14, muted), spaced(8))
+
+        for ((title, target) in listOf("起点发令" to StartActivity::class.java,
+            "终点录像计时" to FinishActivity::class.java,"历史场次与判线" to RaceReviewActivity::class.java)) {
+            val entry=button(title);intro.addView(entry,spaced(8))
+            entry.setOnClickListener { startActivity(Intent(this,target)) }
+        }
 
         val device = card(page)
         section(device, "01", "这台手机", "读取第三方 App 实际能调用的拍摄模式。")
