@@ -1,0 +1,34 @@
+{
+  "core": {
+    "tests": 34,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "app": {
+    "tests": 123,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "total": 157,
+  "lint": {
+    "Warning": 11
+  },
+  "production_commit": "61e4d062fa277a4740f404206c15fc64cf747f71",
+  "apk": {
+    "versionCode": 10,
+    "versionName": "0.1.9-field",
+    "size": 1179786,
+    "sha256": "9b664a335593faa5e8936df06a4aec13bd38841a2cca0fcfbf12b3f5b34c70f2"
+  },
+  "ui_check": {
+    "native_robolectric_rendering": [
+      "360x800",
+      "320x640"
+    ],
+    "camera_content_simulated": true,
+    "keyboard_sized_viewport_regression": true,
+    "physical_device_run": false
+  }
+}
