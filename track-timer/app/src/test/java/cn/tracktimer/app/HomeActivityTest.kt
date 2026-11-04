@@ -22,6 +22,7 @@ class HomeActivityTest {
                 "历史场次与判线" to RaceReviewActivity::class.java,"设备与日志" to MainActivity::class.java)) {
                 buttons.first{it.text==name}.performClick();assertEquals(target.name,Shadows.shadowOf(a).nextStartedActivity.component!!.className)
             }
+            assertTrue("Storage controls must be discoverable",buttons.any{it.text=="录像与存储"})
             assertNull(Shadows.shadowOf(a).lastRequestedPermission)
             assertEquals(HomeActivity::class.java.name,a.packageManager.getLaunchIntentForPackage(a.packageName)!!.component!!.className)
         }finally{c.pause().stop().destroy()}

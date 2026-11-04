@@ -10,6 +10,7 @@
         <activity android:name=".StartActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".FinishActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".RaceReviewActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".StorageActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".MainActivity" android:exported="false" android:screenOrientation="portrait" />
         <activity android:name=".HomeActivity" android:exported="true" android:screenOrientation="portrait">
             <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /></intent-filter>

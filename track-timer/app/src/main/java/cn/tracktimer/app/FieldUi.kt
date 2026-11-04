@@ -42,16 +42,19 @@ open class FieldActivity:Activity() {
         footer=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setPadding(dp(20),dp(8),dp(20),dp(12));setBackgroundColor(Color.WHITE);elevation=dp(5).toFloat();visibility=View.GONE}
         root.addView(footer,LinearLayout.LayoutParams(-1,-2));setContentView(root)
         // Keyboard resizing (or a short window) must leave a scrollable athlete/input area.
-        root.addOnLayoutChangeListener{v,_,_,_,_,_,_,_,_->
+        fun fitWindow(v:View){
             val compact=v.height-v.paddingTop-v.paddingBottom<dp(520)
             val state=if(compact)View.GONE else View.VISIBLE
             if(header.visibility!=state)header.visibility=state
+            onCompactWindow(compact)
         }
+        root.addOnLayoutChangeListener{v,_,_,_,_,_,_,_,_->fitWindow(v)}
         root.setOnApplyWindowInsetsListener{v,i->
             @Suppress("DEPRECATION")
-            v.setPadding(i.systemWindowInsetLeft,i.systemWindowInsetTop,i.systemWindowInsetRight,i.systemWindowInsetBottom);i
+            v.setPadding(i.systemWindowInsetLeft,i.systemWindowInsetTop,i.systemWindowInsetRight,i.systemWindowInsetBottom);fitWindow(v);i
         }
     }
+    protected open fun onCompactWindow(compact:Boolean){}
     protected fun dp(v:Int)=(v*resources.displayMetrics.density).toInt()
     protected fun shape(color:Int,radius:Int=16,stroke:Int?=null)=GradientDrawable().apply{
         setColor(color);cornerRadius=dp(radius).toFloat();stroke?.let{setStroke(dp(1),it)}

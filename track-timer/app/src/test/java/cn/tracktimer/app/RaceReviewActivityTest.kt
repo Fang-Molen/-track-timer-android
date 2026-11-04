@@ -71,6 +71,36 @@ class RaceReviewActivityTest {
             assertTrue("Save action remains in viewport",pos[1]>=0 && pos[1]+save.height<=h)
         }finally{c.pause().stop().destroy()}
     }
+    @Test fun deletedVideoOpensRetainedResultsWithoutAPlayerOrBlackFrame() {
+        val f=fixture();val j=f.races.load(f.id).put("status","saved")
+            .put("results",JSONArray().put(JSONObject().put("name","已判线运动员").put("elapsedNs",12_345_000_000L).put("frameIndex",1)))
+        f.races.save(j);VideoLibrary(ReportStore(RuntimeEnvironment.getApplication())).deleteVideo(f.video.name)
+        val c=open(f)
+        try{val v=views(c.get().window.decorView);assertTrue(v.filterIsInstance<TextView>().any{it.text.contains("已判线运动员：12.345")});assertTrue(v.none{it is ImageView || it is SeekBar});assertTrue(f.cameraFile.isFile)}
+        finally{c.pause().stop().destroy()}
+    }
+    @Test fun continuousScrubbingShowsFramesBeforeFingerReleaseAndFinalSaveUsesExactFrame() {
+        val f=fixture();val c=open(f)
+        try {
+            val v=views(c.get().window.decorView);val slider=v.filterIsInstance<SeekBar>().single()
+            val picture=v.filterIsInstance<ImageView>().single();val save=v.filterIsInstance<Button>().first{it.text=="保存此帧成绩"}
+            waitFor{picture.drawable!=null}
+            val listener=org.robolectric.util.ReflectionHelpers.getField<SeekBar.OnSeekBarChangeListener>(slider,"mOnSeekBarChangeListener")
+            listener.onStartTrackingTouch(slider);var moved=false
+            repeat(24){i->
+                listener.onProgressChanged(slider,if(i%2==0)1 else 2,true)
+                Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(10));Thread.sleep(15)
+                if((picture.drawable as? BitmapDrawable)?.bitmap?.getPixel(0,0)!=Color.RED)moved=true
+                assertFalse("Dragging cannot save a stale preview",save.isEnabled)
+            }
+            assertTrue("Continuous dragging must display decoded frames before release",moved)
+            slider.progress=2;listener.onStopTrackingTouch(slider)
+            waitFor{save.isEnabled}
+            assertEquals(Color.BLUE,(picture.drawable as BitmapDrawable).bitmap.getPixel(0,0))
+            v.filterIsInstance<EditText>().single().setText("2道");save.performClick()
+            assertEquals(2,f.races.load(f.id).getJSONArray("results").getJSONObject(0).getInt("frameIndex"))
+        }finally{c.pause().stop().destroy()}
+    }
     @Test fun exactSelectedFrameAndHistoricalCalibrationPersistTwoTiedAthletes() {
         val f=fixture();val c=open(f)
         try {

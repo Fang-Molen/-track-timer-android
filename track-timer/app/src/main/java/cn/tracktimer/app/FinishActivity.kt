@@ -35,6 +35,9 @@ class FinishActivity:FieldActivity() {
     private lateinit var status:TextView
     private lateinit var prepare:Button
     private lateinit var stop:Button
+    private var previewCamera:PreviewCamera?=null
+    private lateinit var previewAction:Button
+    private val previewHandoff=PreviewHandoff{begin()}
     private var receiver:FieldReceiver?=null
     private var camera:CameraProbe?=null
     private var journal:JSONObject?=null
@@ -59,7 +62,7 @@ class FinishActivity:FieldActivity() {
     }
 
     override fun onCreate(state:Bundle?){super.onCreate(state);reports=ReportStore(this);races=RaceStore(reports)
-        screen("终点取景","连接 → 对线确认 → 等待发令 → 停止判线")
+        screen("终点取景","取景对线 → 开始录像 → 允许发令 → 判线")
         setup=card();label("连接起点手机",20,setup)
         caption("填写起点显示的地址和配对码。两台手机需在同一局域网。",setup)
         host=input("起点IPv4地址，例如192.168.43.1",setup);code=input("起点显示的6位配对码",setup).apply{inputType=android.text.InputType.TYPE_CLASS_NUMBER}
@@ -67,7 +70,7 @@ class FinishActivity:FieldActivity() {
         caption("录像模式",setup)
         fps=Spinner(this).apply{adapter=ArrayAdapter(this@FinishActivity,android.R.layout.simple_spinner_dropdown_item,listOf("120帧 · 推荐","240帧"));minimumHeight=dp(48);setup.addView(this)}
         previewEnabled=CheckBox(this).apply{text="显示实时预览";isChecked=true;minimumHeight=dp(48);setup.addView(this)}
-        caption("连接后即开始录像，对线时间计入3分钟上限。",setup)
+        caption("可以先取景对线，不保存视频；点开始录像后才计入3分钟上限。",setup)
         status=label("尚未开始",18)
         liveBadge=caption("终点参考线 · 左右拖动调整")
         val frame=FrameLayout(this).apply{setBackgroundColor(Color.rgb(17,34,40))};page.addView(frame,LinearLayout.LayoutParams(-1,dp(230)))
@@ -75,12 +78,17 @@ class FinishActivity:FieldActivity() {
             frame.addView(this,FrameLayout.LayoutParams(-1,-1))
             addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_->updatePreviewTransform() }
         }
-        previewCover=TextView(this).apply{text="实时取景\n连接起点后开启相机";textSize=18f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);setBackgroundColor(Color.rgb(17,34,40));frame.addView(this,FrameLayout.LayoutParams(-1,-1))}
+        previewCover=TextView(this).apply{text="实时取景\n先取景对线，不保存视频";textSize=18f;gravity=Gravity.CENTER;setTextColor(Color.WHITE);setBackgroundColor(Color.rgb(17,34,40));frame.addView(this,FrameLayout.LayoutParams(-1,-1))}
         line=FinishLineView(this).apply{fraction=prefs.getFloat("finish_line_fraction",.5f);contentDescription="终点参考线，左右拖动调整";frame.addView(this,FrameLayout.LayoutParams(-1,-1))
             onPositionCommitted={f->prefs.edit().putFloat("finish_line_fraction",f).apply();if(busy){journal?.put("finishLineFraction",f);save()}}
         }
         previewSizer=VideoFrameSizer(frame)
         guide=caption("把手机固定在终点线延长线上，调平机位，让跑道终点线靠近起点的一侧与红线重合。")
+        previewAction=action("先取景对线（不录像）",footer){
+            if(previewCamera!=null)closePreview()
+            else if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.CAMERA),92)
+            else openPreview()
+        }
         prepare=action("连接、对时并开始录像",footer,primary=true){
             if(Build.VERSION.SDK_INT<28)message("终点逐帧判线需要Android 9或以上")
             else if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED)requestPermissions(arrayOf(Manifest.permission.CAMERA),91)
@@ -98,11 +106,45 @@ class FinishActivity:FieldActivity() {
         caption("请保持本页前台。所有运动员过线后再停止录像。")
     }
     override fun onRequestPermissionsResult(requestCode:Int,permissions:Array<out String>,results:IntArray){super.onRequestPermissionsResult(requestCode,permissions,results)
-        if(requestCode==91 && results.firstOrNull()==PackageManager.PERMISSION_GRANTED && visible)begin()}
+        if(results.firstOrNull()==PackageManager.PERMISSION_GRANTED && visible){
+            if(requestCode==91)begin() else if(requestCode==92)openPreview()
+        }}
+    private fun openPreview(){
+        if(busy || !visible || previewCamera!=null || previewHandoff.pending)return
+        if(!texture.isAvailable){bodyScroll.smoothScrollTo(0,(texture.parent as View).top);message("正在展开取景区域，请再点一次取景");return}
+        runCatching {
+            previewEnabled.isChecked=true
+            mode=if(fps.selectedItemPosition==1)CameraTestMode.HD240_FIELD else CameraTestMode.HD120_FIELD
+            val config=DeviceReport.cameraConfig(this,mode);previewConfig=config;updatePreviewTransform()
+            lateinit var p:PreviewCamera
+            p=PreviewCamera(this,texture,config,{
+                if(previewCamera===p && visible && !previewHandoff.pending){previewCover.visibility=View.GONE;status.text="只取景对线 · 尚未录像"}
+            },{text->if(previewCamera===p){status.text=text;closePreview()}})
+            previewCamera=p;setup.visibility=View.GONE;historyButton.visibility=View.GONE
+            line.visibility=View.VISIBLE;line.isEnabled=true;previewCover.text="正在打开取景…";previewCover.visibility=View.VISIBLE
+            liveBadge.text="只取景 · 不保存视频 · 不计入3分钟";previewAction.text="关闭取景，修改连接信息"
+            guide.text="固定手机，调平机位并拖动红线对齐终点。准备好后再点开始录像。"
+            bodyScroll.post{bodyScroll.smoothScrollTo(0,0)};p.start()
+        }.onFailure{message("无法取景：${it.message}")}
+    }
+    private fun closePreview(done:(Boolean)->Unit={}){
+        val p=previewCamera ?: run{done(true);return}
+        previewAction.isEnabled=false;prepare.isEnabled=false
+        p.close{released->
+            if(released && previewCamera===p)previewCamera=null
+            if(visible && !busy){previewAction.isEnabled=true;prepare.isEnabled=true
+                previewAction.text="先取景对线（不录像）";setup.visibility=View.VISIBLE;historyButton.visibility=View.VISIBLE
+                previewCover.visibility=View.VISIBLE;previewCover.text="取景已关闭";liveBadge.text="尚未录像"
+                if(!released)message("相机尚未完成释放，请返回后重试")
+            }
+            done(released)
+        }
+    }
     private fun begin(){
-        if(busy || !visible)return
+        if(busy || !visible || previewHandoff.pending)return
         val ip=host.text.toString().trim();val token=code.text.toString().trim()
-        if(!ip.matches(Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) || ip.split('.').any{it.toInt()>255} || !token.matches(Regex("[0-9]{6}"))){message("请输入有效IPv4地址和6位配对码");return}
+        if(!ip.matches(Regex("[0-9]{1,3}(\\.[0-9]{1,3}){3}")) || ip.split('.').any{it.toInt()>255} || !token.matches(Regex("[0-9]{6}"))){setup.visibility=View.VISIBLE;bodyScroll.smoothScrollTo(0,0);message("请输入有效IPv4地址和6位配对码");return}
+        if(previewCamera!=null){status.text="正在结束取景并准备录像…";previewHandoff.afterClose{done->closePreview(done)};return}
         if(previewEnabled.isChecked && !texture.isAvailable){message("预览尚未准备好，请再试一次");return}
         getPreferences(MODE_PRIVATE).edit().putString("host",ip).putString("code",token).apply()
         val high=fps.selectedItemPosition==1
@@ -155,8 +197,8 @@ class FinishActivity:FieldActivity() {
         },mode,id,durationMs=180_000,onReady={
             if(!stopping && visible){startedNs=SystemClock.elapsedRealtimeNanos();alignment.onFramesAvailable();confirm.isEnabled=alignment.canConfirm
                 if(mode.previewEnabled)previewCover.visibility=View.GONE
-                journal?.put("status","aligning");save();status.text="画面已就绪，请对齐终点线"
-                guide.text=if(mode.previewEnabled)"调平机位，让实际终点线与红线重合；左右拖动红线微调，然后点击下方确认。" else "无预览模式：请先确认机位覆盖终点线，再点击下方确认。"
+                journal?.put("status","aligning");save();status.text="录像画面已就绪，请确认终点线"
+                guide.text=if(mode.previewEnabled)"确认高速录像画面中的终点线仍与红线重合，必要时微调，再点击下方确认。" else "无预览模式：请先确认机位覆盖终点线，再点击下方确认。"
             }
         })
         if(mode.previewEnabled)runCatching {
@@ -202,13 +244,14 @@ class FinishActivity:FieldActivity() {
     }
     private fun controls(enabled:Boolean){prepare.isEnabled=enabled;host.isEnabled=enabled;code.isEnabled=enabled;fps.isEnabled=enabled;previewEnabled.isEnabled=enabled
         setup.visibility=if(enabled)View.VISIBLE else View.GONE;historyButton.visibility=setup.visibility
+        previewAction.visibility=setup.visibility
         prepare.visibility=setup.visibility;stop.visibility=if(enabled)View.GONE else View.VISIBLE
         confirm.visibility=if(enabled)View.GONE else View.VISIBLE;confirm.isEnabled=false
         if(!enabled)bodyScroll.post{bodyScroll.smoothScrollTo(0,0)}
     }
     private fun save():Boolean=journal?.let{runCatching{races.save(it)}.onFailure{status.text="保存失败：${it.message}";interrupted=true}.isSuccess} ?: false
-    override fun onResume(){super.onResume();visible=true;main.post(tick)}
-    override fun onPause(){visible=false;main.removeCallbacks(tick);if(busy)stopRace(true);super.onPause()}
+    override fun onResume(){super.onResume();visible=true;if(!busy && previewCamera==null && !previewHandoff.pending){controls(true);previewAction.isEnabled=true;previewAction.text="先取景对线（不录像）"};main.post(tick)}
+    override fun onPause(){visible=false;previewHandoff.cancel();closePreview();main.removeCallbacks(tick);if(busy)stopRace(true);super.onPause()}
     @Suppress("DEPRECATION")
     override fun onBackPressed(){if(busy)android.app.AlertDialog.Builder(this).setTitle("结束本场并返回？")
         .setMessage("录像会保留，本场将记为中断。").setNegativeButton("继续录像",null).setPositiveButton("结束并返回"){_,_->stopRace(true);finish()}.show()

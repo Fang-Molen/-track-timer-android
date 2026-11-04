@@ -1,6 +1,6 @@
-接手我的双安卓田径训练计时App，继续处理我后续的测试反馈。指定仓库：https://github.com/Fang-Molen/-track-timer-android（注意前导连字符，不要新建其他仓库）。先读HANDOFF.md、track-timer/README.md、deliverables/RELEASE-0.1.9.md和track-timer/verification/VALIDATION-0.1.9.md。
+接手我的双安卓田径训练计时App，继续处理我后续的测试反馈。指定仓库：https://github.com/Fang-Molen/-track-timer-android（注意前导连字符，不要新建其他仓库）。先读HANDOFF.md、track-timer/README.md、deliverables/RELEASE-0.1.10.md和track-timer/verification/VALIDATION-0.1.10.md。
 
-最新0.1.9-field：新首页、统一原生UI、底部固定操作。终点开始录像后有实时红线，拖动对齐并点“对线完成，允许发令”后起点才允许发令。保存图像坐标红线位置并继承到逐帧判线。对线时间已计入180秒录制上限；不另建高速相机会话。0.1.7方向/比例/黑屏已修复，0.1.8批量元数据和放大画面已完成。
+最新0.1.10-field：先不录像取景对线，准备好再开始120/240帧录像，3分钟从正式录像起算。普通预览实际关闭后才启动高速相机，后者出帧并确认红线后才READY。视频管理按用户明确选择：手动单段清理，可一键清理显式标记“本场判线完成”的录像，保留成绩/JSON；不自动删除，不把保存一条成绩当作全员完成。进度条改为持续拖动预览、全程/局部精调、按发令后秒数跳转，松手准确帧才可保存。相机/编码/声音/计时核心检查不变。
 
 0.1.8最新两场现场日志约119.716fps，全部相机/双机对时检查通过，其中一场保存两条训练成绩。不要重复普通60帧排查。当前零点是电子发令，提示音延迟和整体物理精度仍未校准，不等于正式电计时。
 

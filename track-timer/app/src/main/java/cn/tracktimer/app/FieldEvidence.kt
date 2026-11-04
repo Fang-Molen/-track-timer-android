@@ -14,6 +14,14 @@ class CaptureBudget(val durationMs:Long,val fps:Int) {
 class FrameTimeline private constructor(private val raw:LongArray) {
     val size:Int get()=raw.size
     fun timestamp(index:Int):Long=raw[index]
+    fun indexAtOrAfter(timestampNs:Long):Int {
+        val found=java.util.Arrays.binarySearch(raw,timestampNs)
+        return (if(found>=0)found else -found-1).coerceIn(0,raw.lastIndex)
+    }
+    fun indexAtOrBefore(timestampNs:Long):Int {
+        val found=java.util.Arrays.binarySearch(raw,timestampNs)
+        return (if(found>=0)found else -found-2).coerceIn(0,raw.lastIndex)
+    }
     companion object {
         fun from(report:JSONObject,decodedFrameCount:Int):FrameTimeline {
             val r=HighSpeedCalibration.recheckForReview(report)
