@@ -3,7 +3,6 @@ package cn.tracktimer.app
 import android.Manifest
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.Matrix
 import android.os.*
 import android.view.TextureView
 import android.widget.*
@@ -36,6 +35,7 @@ class FinishActivity:FieldActivity() {
     private var interrupted=false
     private var stopping=false
     private var startedNs=0L
+    private var previewConfig:CameraConfig?=null
     private var mode=CameraTestMode.HD120_FIELD
 
     override fun onCreate(state:Bundle?){super.onCreate(state);reports=ReportStore(this);races=RaceStore(reports)
@@ -45,7 +45,10 @@ class FinishActivity:FieldActivity() {
         val prefs=getPreferences(MODE_PRIVATE);host.setText(prefs.getString("host",""));code.setText(prefs.getString("code",""))
         fps=Spinner(this).apply{adapter=ArrayAdapter(this@FinishActivity,android.R.layout.simple_spinner_dropdown_item,listOf("120帧 · 建议先测","240帧"));page.addView(this)}
         previewEnabled=CheckBox(this).apply{text="显示预览（启动失败时可手动关闭重试）";isChecked=true;page.addView(this)}
-        texture=TextureView(this).apply{page.addView(this,LinearLayout.LayoutParams(-1,dp(230)))}
+        texture=TextureView(this).apply{
+            page.addView(this,LinearLayout.LayoutParams(-1,dp(230)))
+            addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_->updatePreviewTransform() }
+        }
         status=label("尚未开始",18)
         prepare=action("连接、对时并开始录像"){
             if(Build.VERSION.SDK_INT<28)message("终点逐帧判线需要Android 9或以上")
@@ -114,12 +117,17 @@ class FinishActivity:FieldActivity() {
                 journal?.put("status","ready");save();status.text="终点已就绪，等待起点发令"}
         })
         if(mode.previewEnabled)runCatching {
-            val c=DeviceReport.cameraConfig(this,mode);val rotation=c.sensorOrientation
-            val w=texture.width.toFloat();val h=texture.height.toFloat();val bw=c.size.width.toFloat();val bh=c.size.height.toFloat()
-            val quarter=rotation%180!=0;val scale=minOf(w/(if(quarter)bh else bw),h/(if(quarter)bw else bh))
-            texture.setTransform(Matrix().apply{setScale(scale*bw/w,scale*bh/h,w/2,h/2);postRotate(rotation.toFloat(),w/2,h/2)})
+            previewConfig=DeviceReport.cameraConfig(this,mode)
+            updatePreviewTransform()
         }
         camera?.start()
+    }
+    private fun updatePreviewTransform(){
+        val c=previewConfig ?: return
+        if(!mode.previewEnabled || texture.width<=0 || texture.height<=0)return
+        @Suppress("DEPRECATION")
+        val displayRotation=windowManager.defaultDisplay.rotation*90
+        texture.setTransform(CameraPreviewTransform.matrix(texture.width,texture.height,c.size.width,c.size.height,c.sensorOrientation,displayRotation))
     }
     private fun stopRace(aborted:Boolean){
         if(!busy)return
