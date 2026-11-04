@@ -6,8 +6,8 @@ android {
         applicationId = "cn.tracktimer.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8-field"
+        versionCode = 10
+        versionName = "0.1.9-field"
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

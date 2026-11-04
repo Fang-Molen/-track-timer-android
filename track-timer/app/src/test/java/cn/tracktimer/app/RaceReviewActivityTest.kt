@@ -56,6 +56,21 @@ class RaceReviewActivityTest {
         while(!test() && System.nanoTime()<until){Shadows.shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(100));Thread.sleep(10)}
         assertTrue(test())
     }
+    @Test fun keyboardSizedViewportLeavesRoomForAthleteEntryAndFixedActions() {
+        val f=fixture();val c=open(f)
+        try {
+            val root=c.get().findViewById<ViewGroup>(android.R.id.content).getChildAt(0)
+            val v=views(root);waitFor{v.filterIsInstance<SeekBar>().single().isEnabled}
+            v.filterIsInstance<Button>().first{it.text=="+1 帧"}.performClick()
+            waitFor{v.filterIsInstance<Button>().first{it.text=="保存此帧成绩"}.isEnabled}
+            val density=c.get().resources.displayMetrics.density
+            val w=(320*density).toInt();val h=(360*density).toInt()
+            repeat(3){root.measure(View.MeasureSpec.makeMeasureSpec(w,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(h,View.MeasureSpec.EXACTLY));root.layout(0,0,w,h)}
+            assertTrue("Keyboard must leave enough scroll area for the athlete field: scroll=${v.filterIsInstance<ScrollView>().single().height}, input=${v.filterIsInstance<EditText>().single().height}, root=$h, children=${(root as ViewGroup).let{r->(0 until r.childCount).map{r.getChildAt(it).height}}}",v.filterIsInstance<ScrollView>().single().height>=v.filterIsInstance<EditText>().single().height)
+            val save=v.filterIsInstance<Button>().first{it.text=="保存此帧成绩"};val pos=IntArray(2);save.getLocationInWindow(pos)
+            assertTrue("Save action remains in viewport",pos[1]>=0 && pos[1]+save.height<=h)
+        }finally{c.pause().stop().destroy()}
+    }
     @Test fun exactSelectedFrameAndHistoricalCalibrationPersistTwoTiedAthletes() {
         val f=fixture();val c=open(f)
         try {
@@ -67,6 +82,19 @@ class RaceReviewActivityTest {
             for(athlete in listOf("1道 A","2道 B 遮挡并列")){name.setText(athlete);save.performClick()}
             val results=f.races.load(f.id).getJSONArray("results");assertEquals(2,results.length())
             for(i in 0..1){assertEquals(1,results.getJSONObject(i).getInt("frameIndex"));assertEquals(8_333_000L,results.getJSONObject(i).getLong("elapsedNs"));assertEquals("training_signal",results.getJSONObject(i).getString("quality"))}
+        }finally{c.pause().stop().destroy()}
+    }
+    @Test fun liveReferenceIsInheritedAndStoredWithTheReviewedResult() {
+        val f=fixture();f.races.save(f.races.load(f.id).put("finishLineFraction",.31))
+        val c=open(f)
+        try {
+            val v=views(c.get().window.decorView);val line=v.filterIsInstance<FinishLineView>().single()
+            assertEquals(.31f,line.fraction,.001f)
+            val save=v.filterIsInstance<Button>().first{it.text=="保存此帧成绩"}
+            waitFor{v.filterIsInstance<SeekBar>().single().isEnabled}
+            v.filterIsInstance<Button>().first{it.text=="+1 帧"}.performClick();waitFor{save.isEnabled}
+            v.filterIsInstance<EditText>().single().setText("1道");save.performClick()
+            assertEquals(.31,f.races.load(f.id).getJSONArray("results").getJSONObject(0).getDouble("finishLineFraction"),.001)
         }finally{c.pause().stop().destroy()}
     }
     @Test fun failedClockStillDisplaysExactFramesButNeverEnablesTiming() {

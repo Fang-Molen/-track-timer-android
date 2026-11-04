@@ -15,6 +15,18 @@ import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class) @Config(sdk=[28])
 class FinishLineGestureTest {
+    @Test fun referenceUsesImageCoordinatesAcrossLetterboxingAndLocksAfterConfirmation() {
+        val line=FinishLineView(org.robolectric.RuntimeEnvironment.getApplication())
+        line.setImageSize(720,1280);line.layout(0,0,400,400)
+        var committed=0;line.onPositionCommitted={committed++}
+        fun tap(x:Float){for(action in listOf(MotionEvent.ACTION_DOWN,MotionEvent.ACTION_UP)){
+            val e=MotionEvent.obtain(0,10,action,x,200f,0);line.onTouchEvent(e);e.recycle()
+        }}
+        // The225px-wide portrait image is centered at x=87.5 in the400px viewport.
+        tap(143.75f);assertEquals(.25f,line.fraction,.001f)
+        line.layout(0,0,800,400);tap(343.75f);assertEquals(.25f,line.fraction,.001f)
+        line.isEnabled=false;tap(700f);assertEquals(.25f,line.fraction,.001f);assertEquals(2,committed)
+    }
     private fun screen(test:(ScrollView,FinishLineView)->Unit) {
         val controller=Robolectric.buildActivity(Activity::class.java).setup()
         try {

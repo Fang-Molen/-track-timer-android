@@ -36,10 +36,12 @@ class StartActivity:FieldActivity() {
         }
     }
     override fun onCreate(state:Bundle?){super.onCreate(state);store=ReportStore(this);volumeControlStream=AudioManager.STREAM_MUSIC
-        screen("起点 · 发令")
-        label("两台手机连接同一局域网。起点放在运动员附近，媒体音量调高。保持本页亮屏，切后台将取消本场。")
-        val address=label("尚未开启",19)
-        open=action("开启起点服务"){
+        screen("起点发令","等待终点对线确认，再发出起跑信号")
+        val pairing=card();caption("01  /  连接两台手机",pairing)
+        label("起点连接信息",23,pairing)
+        caption("两台手机连接同一 Wi-Fi 或热点，将下面信息填入终点手机。",pairing)
+        val address=label("开启服务后显示地址和配对码",20,pairing).apply{setTextIsSelectable(true)}
+        open=action("开启起点服务",pairing){
             runCatching {
                 val session=UUID.randomUUID().toString();val code=(SecureRandom().nextInt(900000)+100000).toString()
                 val c=RaceCoordinator(session,SystemClock::elapsedRealtimeNanos,requireCue=true)
@@ -48,13 +50,15 @@ class StartActivity:FieldActivity() {
                 coordinator=c;server=s;open.isEnabled=false
                 val ips=NetworkInterface.getNetworkInterfaces().toList().flatMap{it.inetAddresses.toList()}
                     .filterIsInstance<Inet4Address>().filter{!it.isLoopbackAddress}.mapNotNull{it.hostAddress}
-                address.text="起点地址：${ips.joinToString(" / ").ifEmpty{"未找到，请先连接Wi-Fi或开启热点"}}\n端口：19119\n配对码：$code"
+                address.text="起点地址：${ips.joinToString(" / ").ifEmpty{"未找到，请先连接Wi-Fi或开启热点"}}\n配对码：$code"
             }.onFailure{message("无法开启：${it.message}")}
         }
-        status=label("先开启起点服务",20)
-        fire=action("发令一次") { fireOnce() }.apply{isEnabled=false}
-        action("取消本场") {coordinator?.cancelActive();soundNote=""}
-        label("计时零点是点击发令后记录的电子事件，提示音稍后输出。声音延迟尚未校准，成绩用于训练实测，不能当作已验证的全自动电计时。",14)
+        caption("02  /  等待终点确认")
+        status=label("先开启起点服务",22)
+        caption("把手机放在运动员附近，媒体音量调高。终点点击“对线完成，允许发令”后，下方按钮会亮起。")
+        caption("保持本页前台。声音输出延迟尚未标定。")
+        fire=action("发令一次",footer,primary=true) { fireOnce() }.apply{isEnabled=false;minimumHeight=dp(72)}
+        action("取消本场",footer) {coordinator?.cancelActive();soundNote=""}
     }
     private fun fireOnce(){
         var fired:RaceSnapshot?=null
