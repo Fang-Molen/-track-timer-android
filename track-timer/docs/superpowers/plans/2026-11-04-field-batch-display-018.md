@@ -24,19 +24,19 @@ Preserve 2,000 ns direct-match tolerance, >=30 anchors, >=5 s span and >=80% cov
 Files: new `HighSpeedMetadata.kt`; modify `HighSpeedCalibration.kt`, `FieldEvidence.kt`; tests `HighSpeedCalibrationTest.kt`, `FieldEvidenceTest.kt` as needed.
 Interface: `HighSpeedMetadata.select(JSONObject): Selection` carries anchor indices, batch size, validity and whether grouped; `HighSpeedCalibration.recheckForReview(JSONObject): JSONObject` returns a rechecked copy only for eligible historical batches.
 
-- [ ] Write RED tests for valid 120/240 batches, unchanged codec timeline, in-memory historical recheck, malformed grouping, unsupported provenance, derived/callback corruption, insufficient anchors/span/coverage and shifted codec clocks.
-- [ ] Observe targeted tests fail for existing repeated-frame rejection.
-- [ ] Implement structural selection, diagnostic fields and conservative in-memory historical recheck.
-- [ ] Run target suite GREEN and offline Kotlin replay of supplied logs, keeping raw data outside git.
-- [ ] Commit code and tests.
+- [x] Write RED tests for valid 120/240 batches, unchanged codec timeline, in-memory historical recheck, malformed grouping, unsupported provenance, derived/callback corruption, insufficient anchors/span/coverage and shifted codec clocks.
+- [x] Observe targeted tests fail for existing repeated-frame rejection.
+- [x] Implement structural selection, diagnostic fields and conservative in-memory historical recheck.
+- [x] Run target suite GREEN and offline Kotlin replay of supplied logs, keeping raw data outside git.
+- [x] Commit code and tests.
 
 ### Task 2: enlarge the existing image areas
 
 Files: `FieldUi.kt`, `FinishActivity.kt`, `RaceReviewActivity.kt`, version config. Interface: `VideoFrameSizer(View).setImageSize(Int, Int)` updates layout height from measured width and upright image dimensions with one listener per image.
 
-- [ ] Replace fixed 230/280dp areas with content-width aspect sizing; preview config and decoded bitmap supply real upright dimensions. Preserve existing transform and ImageView FIT_CENTER.
-- [ ] Run existing preview geometry / review navigation tests. Simple sizing values do not warrant implementation-mirroring tests. Final review adds real ScrollView gesture tests for enlarged-image control access.
-- [ ] Bump 0.1.8-field / code 9; run full core/app tests, assembleDebug, lintDebug.
-- [ ] Commit and obtain one fresh whole-branch review; address important findings with regression tests.
-- [ ] Package signed APK, verification notes and release guide, update handoff docs; preserve existing artifacts and root README.
-- [ ] Push authorized existing repository and verify remote APK bytes/hash and main commit.
+- [x] Replace fixed 230/280dp areas with content-width aspect sizing; preview config and decoded bitmap supply real upright dimensions. Preserve existing transform and ImageView FIT_CENTER.
+- [x] Run existing preview geometry / review navigation tests. Simple sizing values do not warrant implementation-mirroring tests. Final review adds real ScrollView gesture tests for enlarged-image control access.
+- [x] Bump 0.1.8-field / code 9; run full core/app tests, assembleDebug, lintDebug.
+- [x] Commit and obtain one fresh whole-branch review; address important findings with regression tests.
+- [x] Package signed APK, verification notes and release guide, update handoff docs; preserve existing artifacts and root README.
+- [x] Push authorized existing repository and verify remote APK bytes/hash and main commit.

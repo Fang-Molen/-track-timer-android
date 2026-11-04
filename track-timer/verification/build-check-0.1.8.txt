@@ -1,0 +1,7 @@
+Command: :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug -Pkotlin.compiler.execution.strategy=in-process
+Result: BUILD SUCCESSFUL in 3m 18s
+Tests: core34 + app113 =147, 0 failures/errors/skips.
+Lint: 0 errors,9 pre-existing warnings.
+APK signature: v2 verified; same certificate as0.1.7.
+Production commit: a6949680e6673edb6c4f15829a21949d38f4c667
+APK SHA256: 7bc1e000d3658847a8dc4da29b68f50575c44c66ddfa800177f083367fe03e30

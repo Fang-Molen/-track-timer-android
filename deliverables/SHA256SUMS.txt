@@ -1,3 +1,4 @@
 bca1f5c8b0a8b1711b24e2184b1c482a8d6cbd9b9f9e9b1b8fa3f3d7831febce  track-timer-handoff-2026-11-01.zip
 e226c9c57749670e80cbae333aa4ba95691ee10fa92507954ec67fac0265bad3  track-timer-0.1.6-field.apk
 e46b3796a17c5063e001c208cdcbc9e212f7a5ce7caa10f9342bbd689b1d6626  track-timer-0.1.7-field.apk
+7bc1e000d3658847a8dc4da29b68f50575c44c66ddfa800177f083367fe03e30  track-timer-0.1.8-field.apk

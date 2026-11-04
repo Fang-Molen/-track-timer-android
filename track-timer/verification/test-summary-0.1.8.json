@@ -1,0 +1,31 @@
+{
+  "core": {
+    "tests": 34,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "app": {
+    "tests": 113,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "total": 147,
+  "lint": {
+    "Warning": 9
+  },
+  "local_real_log_replay": {
+    "runs": 6,
+    "aligned": 5,
+    "short_interrupted_rejected": 1,
+    "not_in_shipped_suite": true
+  },
+  "production_commit": "a6949680e6673edb6c4f15829a21949d38f4c667",
+  "apk": {
+    "versionCode": 9,
+    "versionName": "0.1.8-field",
+    "size": 1157977,
+    "sha256": "7bc1e000d3658847a8dc4da29b68f50575c44c66ddfa800177f083367fe03e30"
+  }
+}
