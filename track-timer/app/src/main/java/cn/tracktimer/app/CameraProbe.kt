@@ -56,6 +56,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
     @Volatile private var finished = false
     private var config: CameraConfig? = null
     private var video: File? = null
+    private var videoLease: java.io.Closeable? = null
     private var startedNs = 0L
     private var failedCaptures = 0
     private var sessionParametersSubmitted = false
@@ -83,7 +84,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                     preview = Surface(surfaceTexture)
                 }
                 val target = if (mode.clockCalibration) {
-                    val file = store.newFile("video", "pending"); video = file
+                    val file = reserveVideo()
                     val e = SurfaceEncoder(budget.sampleLimit); encoder = e
                     e.prepare(c,file)
                     handler.post(codecPoll)
@@ -91,7 +92,7 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                 } else if (c.captureOnly) {
                     CameraFrameReader(c.size) { stop("图像消费失败：$it") }.also { frameReader = it }.surface
                 } else {
-                    val file = store.newFile("video", "pending"); video = file
+                    val file = reserveVideo()
                     @Suppress("DEPRECATION")
                     val r = MediaRecorder()
                     recorder = r
@@ -175,6 +176,12 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
                 override fun onConfigureFailed(session: CameraCaptureSession) { finish("此分辨率/帧率组合无法启动，请导出设备报告。") }
             }, handler, c.highSpeed, c.streamUseCase, mode.clockCalibration)
         } catch (e: Exception) { finish(e.message ?: "录像配置失败") }
+    }
+
+    internal fun reserveVideo():File {
+        check(video==null)
+        val file=store.newFile("video","pending")
+        videoLease=ActiveVideoFiles.claim(file);video=file;return file
     }
 
     fun complete() { handler.post { finish(null) } }
@@ -266,7 +273,9 @@ class CameraProbe(private val context: Context, private val store: ReportStore,
         updateFrameRateStatus(report)
         if (mode.clockCalibration) HighSpeedCalibration.annotate(report)
         runCatching { val saved=store.saveJson("camera", report);report.put("reportFile",saved.name) }.onFailure { report.put("saveError", it.message) }
-        main.post { onDone(report) }
+        if(!main.post { try{onDone(report)}finally{videoLease?.close();videoLease=null} }){
+            videoLease?.close();videoLease=null
+        }
         worker.quitSafely()
     }
 

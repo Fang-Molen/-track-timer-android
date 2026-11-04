@@ -50,6 +50,30 @@ class VideoLibraryTest {
         val b=races.list().first{it.optString("videoFile")==second.name};b.put("reviewCompleted",false);races.save(b)
         assertEquals(0,lib.deleteReviewed(listOf(second.name)).files);assertTrue(second.exists())
     }
+    @Test fun anUnreferencedFinalizingMp4CannotBeDeletedUntilTheRecorderPublishesIt(){
+        val s=store;val lib=VideoLibrary(s);val pending=s.newFile("video","pending")
+        val lease=ActiveVideoFiles.claim(pending);val video=java.io.File(s.directory,pending.nameWithoutExtension+".mp4").apply{writeText("finishing")}
+        try{
+            assertFalse("A renamed video is still owned during inspection and callback publication",lib.inventory().single().canDelete)
+            assertThrows(IllegalArgumentException::class.java){lib.deleteVideo(video.name)}
+            assertTrue(video.isFile)
+        }finally{lease.close()}
+        assertEquals(1,lib.deleteVideo(video.name).files)
+    }
+    @Test fun aPriorProcessFinishingVideoCanBeClearedManuallyButNeverByCompletedBatch(){
+        val s=store;val races=RaceStore(s);val lib=VideoLibrary(s)
+        val video=s.newFile("video","mp4").apply{writeText("old finalized video")}
+        val j=race(video.name,"finishing").put("clientSession",UUID.randomUUID().toString());races.save(j)
+        assertEquals(0,lib.deleteReviewed().files)
+        assertEquals(1,lib.deleteVideo(video.name).files)
+        assertEquals(1,races.load(j.getString("raceId")).getJSONArray("results").length())
+    }
+    @Test fun aCurrentProcessFinishingReferenceRemainsProtectedAfterPublication(){
+        val s=store;val races=RaceStore(s);val lib=VideoLibrary(s)
+        val video=s.newFile("video","mp4").apply{writeText("current")}
+        races.save(race(video.name,"finishing").put("clientSession",AppSession.id))
+        assertThrows(IllegalArgumentException::class.java){lib.deleteVideo(video.name)};assertTrue(video.exists())
+    }
     @Test fun cannotMarkAnEmptyOrActiveTrialAsReviewed(){
         val s=store;val races=RaceStore(s);val lib=VideoLibrary(s)
         for(j in listOf(race("video_none.mp4","fired"),race("video_none.mp4").put("results",JSONArray()))){races.save(j);assertThrows(IllegalArgumentException::class.java){lib.markReviewed(j.getString("raceId"))}}

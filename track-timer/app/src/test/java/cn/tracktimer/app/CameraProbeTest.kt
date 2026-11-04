@@ -14,6 +14,23 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [28])
 class CameraProbeTest {
+    @Test fun recordingOwnershipLastsThroughTheDoneCallbackAndReleasesAfterPublication() {
+        val app=RuntimeEnvironment.getApplication();val store=ReportStore(app);val library=VideoLibrary(store)
+        var callbackSeen=false;var protectedInCallback=false
+        lateinit var completed:java.io.File
+        val probe=CameraProbe(app,store,TextureView(app),{}, {
+            protectedInCallback=!library.inventory().first{it.name==completed.name}.canDelete
+            callbackSeen=true
+        },CameraTestMode.HD240_CLOCK)
+        val pending=probe.reserveVideo()
+        completed=java.io.File(pending.parentFile,pending.nameWithoutExtension+".mp4").apply{writeText("simulated rename before publication")}
+        assertTrue(ActiveVideoFiles.isActive(completed))
+        probe.stop()
+        val deadline=System.nanoTime()+3_000_000_000L
+        while(!callbackSeen && System.nanoTime()<deadline){shadowOf(Looper.getMainLooper()).idle();Thread.sleep(5)}
+        assertTrue(callbackSeen);assertTrue("Done callback must still own the video until references are published",protectedInCallback)
+        assertFalse(ActiveVideoFiles.isActive(completed));assertTrue(library.inventory().first{it.name==completed.name}.canDelete)
+    }
     @Test fun cancelledClockProbeKeepsConsumerIdentityAndCannotPassClockMapping() {
         val app = RuntimeEnvironment.getApplication()
         var report: JSONObject? = null

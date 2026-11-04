@@ -31,8 +31,14 @@ class VideoLibrary(private val reports:ReportStore) {
             if(!namePattern.matches(f.name) || !f.isFile || runCatching{owned(f.name)}.isFailure)return@mapNotNull null
             val linked=refs[f.name].orEmpty()
             val terminal=linked.all{it.optString("status") in setOf("saved","interrupted")}
-            Entry(f.name,f.length(),f.lastModified(),linked.map{it.getString("raceId")},terminal,
-                terminal && linked.isNotEmpty() && linked.all{it.optBoolean("reviewCompleted") && (it.optJSONArray("results")?.length() ?: 0)>0})
+            val activeReference=linked.any{j->
+                val session=j.optString("clientSession")
+                val explicitlyOld=session.isNotBlank() && session!="null" && session!=AppSession.id
+                j.optString("status") !in setOf("saved","interrupted") && !explicitlyOld
+            }
+            val canDelete=!activeReference && !ActiveVideoFiles.isActive(f)
+            Entry(f.name,f.length(),f.lastModified(),linked.map{it.getString("raceId")},canDelete,
+                canDelete && terminal && linked.isNotEmpty() && linked.all{it.optBoolean("reviewCompleted") && (it.optJSONArray("results")?.length() ?: 0)>0})
         }.sortedByDescending{it.modified}
     }
     fun markReviewed(id:String)=synchronized(lock){
@@ -47,7 +53,7 @@ class VideoLibrary(private val reports:ReportStore) {
         require(item.canDelete && (!requireReviewed || item.reviewed)){"本场仍在录制/保存或尚未完成判线"}
         // Existing JSON remains intact even if updating the deletion marker fails.
         val linked=item.raceIds.map{races.load(it)}
-        check(file.delete()){ "无法删除录像，请稍后重试" }
+        check(ActiveVideoFiles.whileInactive(file){file.delete()}){ "无法删除录像，请稍后重试" }
         var warnings=0
         linked.forEach{j->runCatching{j.put("videoDeleted",true).put("videoDeletedAtUnixMs",System.currentTimeMillis()).put("videoCleanupState","deleted");races.save(j)}.onFailure{warnings++}}
         Deleted(item.bytes,1,warnings)
