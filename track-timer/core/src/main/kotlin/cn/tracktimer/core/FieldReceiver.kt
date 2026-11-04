@@ -7,7 +7,9 @@ data class ReceiverFinal(val post:Calibration?,val completed:Boolean,val error:S
 class FieldReceiver(private val client:String,private val race:String,private val clock:()->Long,
     private val measure:()->Calibration,private val command:(String,String)->RaceSnapshot,
     private val onCalibration:(Calibration)->Unit,private val onSignal:(RaceSnapshot,Calibration,Long)->Unit,
-    private val onStatus:(String)->Unit,private val onFinished:(ReceiverFinal)->Unit):Runnable {
+    private val onStatus:(String)->Unit,private val onFinished:(ReceiverFinal)->Unit,
+    /** LAN keeps the strict 5 ms gate; the internet relay accepts wider bounds and marks results 仅供参考. */
+    private val maxUncertaintyNs:Long=SyncLimits.STRICT_NS):Runnable {
     @Volatile var recordingReady=false
     @Volatile var recordingStopped=false
     @Volatile private var stopping=false
@@ -18,7 +20,7 @@ class FieldReceiver(private val client:String,private val race:String,private va
         var signal:RaceSnapshot?=null;var completed=false;var error:String?=null
         fun checked(c:Calibration,host:String?=null):Calibration {
             require(c.localSession==client && (host==null || c.remoteSession==host)){"起点会话改变，请重新准备"}
-            require(c.uncertaintyNs in 0..5_000_000L){"对时区间过宽，请靠近路由器或更换网络"}
+            require(c.uncertaintyNs in 0..maxUncertaintyNs){"对时误差过大（±${c.uncertaintyNs/1_000_000}毫秒），请换网络或改用同一局域网"}
             require(clock()-c.anchorLocalNs in 0..30_000_000_000L){"对时采样过旧，请重试"};return c
         }
         fun accept(r:RaceSnapshot) {

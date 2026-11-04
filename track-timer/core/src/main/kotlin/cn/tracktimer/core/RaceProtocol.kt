@@ -62,13 +62,21 @@ object RaceClient {
         Socket().use { socket ->
             socket.connect(InetSocketAddress(host,port),1500);socket.tcpNoDelay=true
             socket.getOutputStream().apply { write("RACE1|$token|$expectedHost|$client|$race|$verb\n".toByteArray(Charsets.US_ASCII));flush() }
-            val p=readBoundedLine(socket,1500).split('|')
+            return parse(readBoundedLine(socket,1500),expectedHost,client,race)
+        }
+    }
+    fun request(transport:LineTransport,token:String,expectedHost:String,client:String,race:String,verb:String):RaceSnapshot {
+        require(token.matches(Regex("[0-9]{6}")))
+        require(listOf(expectedHost,client,race,verb).all{it.matches(Regex("[A-Za-z0-9-]{1,64}"))})
+        return parse(transport.exchange("RACE1|$token|$expectedHost|$client|$race|$verb",3000),expectedHost,client,race)
+    }
+    internal fun parse(line:String,expectedHost:String,client:String,race:String):RaceSnapshot {
+            val p=line.split('|')
             if(p.firstOrNull()=="ERROR")throw RaceCommandException(p.getOrElse(1){"PROTOCOL"})
             if(p.size!=8 || p[0]!="RACE1" || p[1]!=expectedHost || p[2]!=client || p[3]!=race)throw RaceCommandException("REPLY_SESSION")
             val phase=runCatching{RacePhase.valueOf(p[4])}.getOrNull()?:throw RaceCommandException("REPLY_PHASE")
             val start=p[5].toLongOrNull()?:throw RaceCommandException("REPLY_TIME")
             if(start<0 || (phase in listOf(RacePhase.FIRED,RacePhase.DONE) && start==0L) || p[6] !in listOf("0","1") || p[7] !in listOf("0","1"))throw RaceCommandException("REPLY_VALUES")
             return RaceSnapshot(p[1],p[2],p[3],phase,start,p[6]=="1",p[7]=="1")
-        }
     }
 }

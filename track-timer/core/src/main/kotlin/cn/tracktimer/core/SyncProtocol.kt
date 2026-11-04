@@ -30,6 +30,32 @@ internal fun readBoundedLine(socket: Socket, timeoutMs: Int): String {
     throw IOException("Message too long")
 }
 
+/** Transport-independent reply logic shared by the LAN socket server and the internet relay host. */
+class SyncResponder(private val token: String, private val sessionId: String,
+    private val clock: () -> Long, private val races: RaceCoordinator? = null) {
+    data class Reply(val text: String, val keepOpen: Boolean)
+    init { require(token.matches(Regex("[0-9]{6}"))); require(sessionId.matches(Regex("[A-Za-z0-9-]{1,64}"))) }
+    /** [received] must be sampled as soon as the request arrived; the send stamp is sampled here, last. */
+    fun respond(line: String, received: Long): Reply {
+        val parts = line.split('|')
+        if (parts.firstOrNull() == "RACE1") {
+            val reply = try {
+                require(parts.size == 6 && parts[1] == token) { "PAIRING" }
+                val r = requireNotNull(races) { "UNSUPPORTED" }.handle(parts[2],parts[3],parts[4],parts[5])
+                "RACE1|${r.hostSession}|${r.clientSession}|${r.raceId}|${r.phase}|${r.startNs}|${if(r.acknowledged) 1 else 0}|${if(r.readyFresh) 1 else 0}"
+            } catch (e: IllegalArgumentException) { "ERROR|${e.message ?: "PROTOCOL"}" }
+            return Reply(reply, false)
+        }
+        if (parts.size != 3 || parts[0] != "PROBE" || parts[1] != token || !parts[2].matches(Regex("[0-9]{1,4}")))
+            return Reply("ERROR|Pairing or protocol error", false)
+        val sent = clock()
+        return Reply("STAMP|${parts[2]}|$sessionId|$received|$sent", true)
+    }
+}
+
+/** One request/one reply text channel; [exchange] blocks until the matching reply or throws IOException. */
+interface LineTransport { fun exchange(line: String, timeoutMs: Int): String }
+
 class SyncServer(private val token: String, private val sessionId: String,
     private val clock: () -> Long, private val races: RaceCoordinator? = null) : Closeable {
     private val sockets = ConcurrentHashMap.newKeySet<Socket>()
@@ -38,7 +64,7 @@ class SyncServer(private val token: String, private val sessionId: String,
     @Volatile private var running = false
     private var listener: ServerSocket? = null
 
-    init { require(token.matches(Regex("[0-9]{6}"))); require(sessionId.matches(Regex("[A-Za-z0-9-]{1,64}"))) }
+    private val responder = SyncResponder(token, sessionId, clock, races)
 
     @Synchronized fun start(port: Int): Int {
         check(listener == null) { "Host already started" }
@@ -64,22 +90,9 @@ class SyncServer(private val token: String, private val sessionId: String,
                 repeat(256) {
                     val line = readBoundedLine(socket, 1500)
                     val received = clock()
-                    val parts = line.split('|')
-                    if (parts.firstOrNull() == "RACE1") {
-                        val reply = try {
-                            require(parts.size == 6 && parts[1] == token) { "PAIRING" }
-                            val r = requireNotNull(races) { "UNSUPPORTED" }.handle(parts[2],parts[3],parts[4],parts[5])
-                            "RACE1|${r.hostSession}|${r.clientSession}|${r.raceId}|${r.phase}|${r.startNs}|${if(r.acknowledged) 1 else 0}|${if(r.readyFresh) 1 else 0}"
-                        } catch (e: IllegalArgumentException) { "ERROR|${e.message ?: "PROTOCOL"}" }
-                        output.write((reply + "\n").toByteArray(Charsets.US_ASCII)); output.flush(); return
-                    }
-                    if (parts.size != 3 || parts[0] != "PROBE" || parts[1] != token ||
-                        !parts[2].matches(Regex("[0-9]{1,4}"))) {
-                        output.write("ERROR|Pairing or protocol error\n".toByteArray()); output.flush(); return
-                    }
-                    val sent = clock()
-                    output.write("STAMP|${parts[2]}|$sessionId|$received|$sent\n".toByteArray(Charsets.US_ASCII))
-                    output.flush()
+                    val reply = responder.respond(line, received)
+                    output.write((reply.text + "\n").toByteArray(Charsets.US_ASCII)); output.flush()
+                    if (!reply.keepOpen) return
                 }
             }
         } catch (_: IOException) { /* Disconnection or invalid input closes just this peer. */ }
@@ -97,6 +110,31 @@ class SyncServer(private val token: String, private val sessionId: String,
 data class SyncMeasurement(val calibration: Calibration, val samples: List<Exchange>)
 
 object SyncClient {
+    internal fun parseStamp(line: String, index: Int, t1: Long, t4: Long, peer: String): Pair<Exchange, String> {
+        val parts = line.split('|')
+        if (parts.size != 5 || parts[0] != "STAMP" || parts[1] != index.toString() ||
+            !parts[2].matches(Regex("[A-Za-z0-9-]{1,64}"))) throw IOException("Pairing failed or invalid reply")
+        if (peer.isNotEmpty() && peer != parts[2]) throw IOException("Host restarted")
+        val t2 = parts[3].toLongOrNull() ?: throw IOException("Invalid receive timestamp")
+        val t3 = parts[4].toLongOrNull() ?: throw IOException("Invalid send timestamp")
+        return Exchange(t1, t2, t3, t4) to parts[2]
+    }
+    /** Same measurement over any transport (used by the internet relay). */
+    fun measure(transport: LineTransport, token: String, localSession: String, clock: () -> Long,
+        count: Int = 48, spacingMs: Long = 10): SyncMeasurement {
+        require(count in 8..128)
+        require(token.matches(Regex("[0-9]{6}"))) { "Pairing code must be six digits" }
+        val samples = ArrayList<Exchange>(); var peer = ""
+        repeat(count) { index ->
+            if (Thread.currentThread().isInterrupted) throw IOException("Calibration cancelled")
+            val t1 = clock()
+            val line = transport.exchange("PROBE|$token|$index", 3000)
+            val t4 = clock()
+            val (e, p) = parseStamp(line, index, t1, t4, peer); peer = p; samples.add(e)
+            if (index + 1 < count && spacingMs > 0) Thread.sleep(spacingMs)
+        }
+        return SyncMeasurement(ClockSync.estimate(samples, localSession, peer), samples)
+    }
     fun measure(host: String, port: Int, token: String, localSession: String,
         clock: () -> Long, count: Int = 48): SyncMeasurement {
         require(count in 8..128)

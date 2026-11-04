@@ -19,3 +19,17 @@ class SignalTimingTest {
         assertThrows(IllegalArgumentException::class.java){SignalTiming.calculate(47_000_000_000L,50_000_000_000L,cal(),null,"host","finish")}
     }
 }
+
+class SignalTimingRelayTest {
+    private fun cal(unc:Long,anchor:Long=47_000_000_000L,offset:Long=2_000_000_000L)=Calibration("finish","host",anchor,offset,unc,offset-unc,offset+unc,48,8,2*unc)
+    @Test fun relayWideBoundIsTimedButReferenceOnly() {
+        assertThrows(IllegalArgumentException::class.java){SignalTiming.calculate(60_000_000_000L,50_000_000_000L,cal(20_000_000),null,"host","finish")}
+        val r=SignalTiming.calculate(60_000_000_000L,50_000_000_000L,cal(20_000_000),cal(20_000_000,61_000_000_000L),"host","finish",SyncLimits.RELAY_MAX_NS)
+        assertEquals(12_000_000_000L,r.elapsedNs);assertFalse(r.syncCheckPassed);assertEquals(20_000_000L,r.startUncertaintyNs)
+        assertThrows(IllegalArgumentException::class.java){SignalTiming.calculate(60_000_000_000L,50_000_000_000L,cal(60_000_000),null,"host","finish",SyncLimits.RELAY_MAX_NS)}
+    }
+    @Test fun relayTightBoundStillPasses() {
+        val r=SignalTiming.calculate(60_000_000_000L,50_000_000_000L,cal(3_000_000),cal(3_000_000,61_000_000_000L),"host","finish",SyncLimits.RELAY_MAX_NS)
+        assertTrue(r.syncCheckPassed)
+    }
+}
