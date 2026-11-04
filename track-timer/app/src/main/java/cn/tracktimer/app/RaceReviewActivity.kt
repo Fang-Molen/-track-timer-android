@@ -7,6 +7,7 @@ import android.media.MediaMetadataRetriever
 import android.os.*
 import android.view.MotionEvent
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.*
 import cn.tracktimer.core.SignalTiming
 import org.json.JSONObject
@@ -19,9 +20,32 @@ import java.util.concurrent.Executors
 class FinishLineView(context:Context):View(context) {
     var fraction=.5f
     private val pen=Paint(Paint.ANTI_ALIAS_FLAG).apply{color=Color.RED;strokeWidth=3f}
+    private val slop=ViewConfiguration.get(context).scaledTouchSlop
+    private var downX=0f
+    private var downY=0f
+    private var draggingLine=false
+    private var verticalGesture=false
     override fun onDraw(canvas:Canvas){super.onDraw(canvas);canvas.drawLine(width*fraction,0f,width*fraction,height.toFloat(),pen)}
-    override fun onTouchEvent(e:MotionEvent):Boolean {if(e.action==MotionEvent.ACTION_DOWN || e.action==MotionEvent.ACTION_MOVE){parent.requestDisallowInterceptTouchEvent(true);fraction=(e.x/width).coerceIn(0f,1f);invalidate();return true}
-        if(e.action==MotionEvent.ACTION_UP){performClick();return true};return true}
+    private fun position(x:Float){if(width>0){fraction=(x/width).coerceIn(0f,1f);invalidate()}}
+    override fun onTouchEvent(e:MotionEvent):Boolean {
+        when(e.actionMasked) {
+            MotionEvent.ACTION_DOWN->{downX=e.x;downY=e.y;draggingLine=false;verticalGesture=false}
+            MotionEvent.ACTION_MOVE->{
+                if(!draggingLine && !verticalGesture) {
+                    val dx=kotlin.math.abs(e.x-downX);val dy=kotlin.math.abs(e.y-downY)
+                    if(dy>slop && dy>dx)verticalGesture=true
+                    else if(dx>slop){draggingLine=true;parent?.requestDisallowInterceptTouchEvent(true)}
+                }
+                if(draggingLine)position(e.x)
+            }
+            MotionEvent.ACTION_UP->{
+                if(!verticalGesture){position(e.x);performClick()}
+                parent?.requestDisallowInterceptTouchEvent(false);draggingLine=false
+            }
+            MotionEvent.ACTION_CANCEL->{parent?.requestDisallowInterceptTouchEvent(false);draggingLine=false;verticalGesture=true}
+        }
+        return true
+    }
     override fun performClick():Boolean{super.performClick();return true}
 }
 
@@ -59,7 +83,7 @@ class RaceReviewActivity:FieldActivity() {
         val id=intent.getStringExtra("raceId")
         if(id==null){history();return}
         val j=runCatching{races.load(id)}.getOrElse{label("场次读取失败：${it.message}");return};race=j
-        label("拖动红线对齐画面中的终点线。逐帧选择躯干第一次到达终点线的画面，再保存运动员成绩。",15)
+        label("左右拖动红线对齐终点线，上下滑动可找到操作按钮。逐帧选择躯干第一次到达终点线的画面，再保存运动员成绩。",15)
         val frame=FrameLayout(this);page.addView(frame,LinearLayout.LayoutParams(-1,dp(280)))
         imageSizer=VideoFrameSizer(frame)
         image=ImageView(this).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setBackgroundColor(Color.BLACK)}

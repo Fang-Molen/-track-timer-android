@@ -32,10 +32,10 @@ Interface: `HighSpeedMetadata.select(JSONObject): Selection` carries anchor indi
 
 ### Task 2: enlarge the existing image areas
 
-Files: `FieldUi.kt`, `FinishActivity.kt`, `RaceReviewActivity.kt`, version config. Interface: protected `fitImageWidth(View, Int, Int)` updates layout height from measured width and upright image dimensions.
+Files: `FieldUi.kt`, `FinishActivity.kt`, `RaceReviewActivity.kt`, version config. Interface: `VideoFrameSizer(View).setImageSize(Int, Int)` updates layout height from measured width and upright image dimensions with one listener per image.
 
 - [ ] Replace fixed 230/280dp areas with content-width aspect sizing; preview config and decoded bitmap supply real upright dimensions. Preserve existing transform and ImageView FIT_CENTER.
-- [ ] Run existing preview geometry / review navigation tests. Simple sizing values do not warrant implementation-mirroring tests.
+- [ ] Run existing preview geometry / review navigation tests. Simple sizing values do not warrant implementation-mirroring tests. Final review adds real ScrollView gesture tests for enlarged-image control access.
 - [ ] Bump 0.1.8-field / code 9; run full core/app tests, assembleDebug, lintDebug.
 - [ ] Commit and obtain one fresh whole-branch review; address important findings with regression tests.
 - [ ] Package signed APK, verification notes and release guide, update handoff docs; preserve existing artifacts and root README.

@@ -14,12 +14,14 @@ object HighSpeedMetadata {
         val frames=report.optJSONArray("frames") ?: JSONArray()
         val all=(0 until frames.length()).toList()
         val numbers=all.map{frames.getJSONObject(it).optLong("frameNumber",-1)}
-        if(numbers.zipWithNext().none{(a,b)->a==b})return Selection(all,1,false,true)
+        val previewBatch=CameraStatistics.highSpeed(report) && report.optBoolean("previewEnabled") &&
+            report.optInt("outputSurfaceCount")==2
+        // Explicit preview+encoder reports require full batches even when only endpoints survived.
+        if(!previewBatch && numbers.zipWithNext().none{(a,b)->a==b})return Selection(all,1,false,true)
         val fps=report.optInt("requestedFps")
         val batch=if(fps in listOf(120,240))fps/30 else 0
         fun invalid()=Selection(emptyList(),batch,true,false)
-        if(!CameraStatistics.highSpeed(report) || !report.optBoolean("previewEnabled") ||
-            report.optInt("outputSurfaceCount")!=2 || batch==0 || frames.length()%batch!=0)return invalid()
+        if(!previewBatch || batch==0 || frames.length()==0 || frames.length()%batch!=0)return invalid()
         val anchors=mutableListOf<Int>()
         var previous:Long?=null
         for(first in 0 until frames.length() step batch) {

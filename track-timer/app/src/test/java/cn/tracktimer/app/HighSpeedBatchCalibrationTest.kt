@@ -64,6 +64,13 @@ class HighSpeedBatchCalibrationTest {
         }
         rejected(fixture().put("requestedFps",60))
     }
+    @Test fun endpointOnlyPartialPreviewBatchesCannotFallBackToDirectSampling() {
+        for(fps in listOf(120,240)) {
+            val r=fixture(fps);val f=r.getJSONArray("frames");val batch=fps/30
+            r.put("frames",JSONArray((batch-1 until f.length() step batch).map{f.getJSONObject(it)}))
+            rejected(r)
+        }
+    }
     @Test fun malformedOrPartialBatchesAndDerivedCallbackFailuresStayRejected() {
         for(problem in listOf("partial","timestamp","endpoint","callback","late_callback","number","negative","repeat_group")) {
             val r=fixture();val f=r.getJSONArray("frames")
