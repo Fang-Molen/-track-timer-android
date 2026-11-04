@@ -19,7 +19,10 @@ object HighSpeedCalibration {
         if(c.optBoolean("sampledClockAlignmentObserved"))return emptyList()
         val failed=mutableListOf<String>()
         fun check(code:String,available:Boolean,passed:Boolean){if(available && !passed)failed.add(code)}
-        check("video_health",r.has("requestedFps") && r.has("encodedFps"),
+        val healthKeys=listOf("requestedFps","encodedFps","encodedSpanNs","codecEosReached")
+        val healthAvailable=healthKeys.all{!r.isNull(it)}
+        if(!healthAvailable && healthKeys.any{r.has(it)})failed.add("video_evidence_missing")
+        check("video_health",healthAvailable,
             CameraStatistics.videoRateReached(r) && r.optBoolean("codecEosReached") && r.isNull("codecError"))
         check("realtime_source",r.has("cameraClockRealtime"),r.optBoolean("cameraClockRealtime"))
         for((key,code) in listOf("rawTimestampSequenceValid" to "raw_sequence","sensorMetadataSequenceValid" to "metadata_clock","codecClockPlausible" to "codec_clock"))
@@ -33,6 +36,7 @@ object HighSpeedCalibration {
     fun failureDescription(r:JSONObject):String = failedChecks(r).joinToString("；") {code->
         when(code){
             "video_health"->"录像帧率、时长或完整性未达要求"
+            "video_evidence_missing"->"录像帧率、时长或结束标志记录不完整"
             "realtime_source"->"相机未声明使用本机统一时钟"
             "raw_sequence"->"编码时间戳数值或顺序异常"
             "metadata_clock"->"相机元数据或回调时间异常"

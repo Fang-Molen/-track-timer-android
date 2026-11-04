@@ -25,6 +25,13 @@ class HighSpeedCalibrationTest {
     }
     private fun result(r: JSONObject): JSONObject { HighSpeedCalibration.annotate(r); return r.getJSONObject("clockCalibration") }
 
+    @Test fun incompleteLegacyHealthEvidenceIsNotDiagnosedAsMeasuredRateFailure() {
+        val r=fixture().put("cameraClockRealtime",false);result(r)
+        r.remove("encodedSpanNs");r.remove("codecEosReached")
+        val codes=HighSpeedCalibration.failedChecks(r)
+        assertFalse(codes.contains("video_health"));assertTrue(codes.contains("video_evidence_missing"))
+        assertTrue(codes.contains("realtime_source"))
+    }
     @Test fun rejectedClockNamesTheFailedExistingChecks() {
         val unknown=fixture().put("cameraClockRealtime",false)
         val short=fixture();val frames=short.getJSONArray("frames")
