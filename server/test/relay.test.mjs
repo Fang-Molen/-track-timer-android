@@ -50,3 +50,16 @@ test('host leaving closes the room for the peer', async () => {
   h.close(); assert.equal((await p.next()).t, 'closed');
   assert.equal(relay.stats().rooms, 0); await relay.close();
 });
+
+test('finish phone can resume after a drop with its resume token only', async () => {
+  const { relay, port } = await setup();
+  const h = await client(port); h.send({ t: 'create' }); const { code } = await h.next();
+  const p = await client(port); p.send({ t: 'join', code }); const joined = await p.next(); await h.next();
+  p.close(); assert.equal((await h.next()).state, 'left');
+  const bad = await client(port); bad.send({ t: 'resume', room: joined.room, resume: 'x'.repeat(joined.resume.length) });
+  assert.equal((await bad.next()).code, 'BAD_RESUME');
+  const p2 = await client(port); p2.send({ t: 'resume', room: joined.room, resume: joined.resume });
+  assert.equal((await p2.next()).t, 'joined'); assert.equal((await h.next()).state, 'joined');
+  p2.send({ t: 'fwd', id: 1, d: 'x' }); assert.equal((await h.next()).d, 'x');
+  [h, p2, bad].forEach(c => c.close()); await relay.close();
+});

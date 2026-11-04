@@ -59,7 +59,19 @@ export function createRelay(opts = {}) {
       const roomId = codes.get(String(j.code || '')); const r = roomId && rooms.get(roomId);
       if (!r || r.codeUsed || now() > r.codeExpires) { fail(c.ip); return send(c, { t: 'error', code: r && now() > r.codeExpires ? 'EXPIRED' : 'BAD_CODE' }); }
       r.codeUsed = true; codes.delete(r.code); r.peer = c; r.touched = now(); c.room = roomId; c.role = 'peer';
-      send(c, { t: 'joined', room: roomId }); return send(r.host, { t: 'peer', state: 'joined' });
+      r.resume = crypto.randomBytes(18).toString('base64url');
+      send(c, { t: 'joined', room: roomId, resume: r.resume }); return send(r.host, { t: 'peer', state: 'joined' });
+    }
+    if (j.t === 'resume') {   // finish phone reconnecting after a network drop (code is already used)
+      if (c.room) return send(c, { t: 'error', code: 'ALREADY' });
+      if (locked(c.ip)) return send(c, { t: 'error', code: 'LOCKED' });
+      const r = rooms.get(String(j.room || ''));
+      const ok = r && r.resume && typeof j.resume === 'string' && j.resume.length === r.resume.length &&
+        crypto.timingSafeEqual(Buffer.from(j.resume), Buffer.from(r.resume));
+      if (!ok) { fail(c.ip); return send(c, { t: 'error', code: 'BAD_RESUME' }); }
+      if (r.peer && r.peer !== c) { const old = r.peer; r.peer = null; old.room = null; close(old); }
+      r.peer = c; r.touched = now(); c.room = j.room; c.role = 'peer';
+      send(c, { t: 'joined', room: j.room, resume: r.resume }); return send(r.host, { t: 'peer', state: 'joined' });
     }
     if (j.t === 'fwd') {
       const r = c.room && rooms.get(c.room); if (!r) return send(c, { t: 'error', code: 'NO_ROOM' });

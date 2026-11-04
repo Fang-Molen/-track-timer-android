@@ -82,6 +82,20 @@ class RelayIntegrationTest {
         } finally {host.close()}
     }
 
+    @Test fun finishResumesAfterDropAndKeepsTiming() {
+        val session="host-session-2";val coordinator=RaceCoordinator(session,startClock)
+        var responder:SyncResponder?=null
+        val host=RelayLink.host(url,startClock){line,received->responder!!.respond(line,received).text}
+        responder=SyncResponder(host.code,session,startClock,coordinator)
+        val first=RelayLink.join(url,host.code,finishClock)
+        try {
+            RaceClient.request(first,host.code,session,"finish-2","race-resume","READY")
+            first.close()
+            val second=RelayLink.resume(url,first,finishClock)
+            try { assertEquals(RacePhase.READY,RaceClient.request(second,host.code,session,"finish-2","race-resume","POLL").phase) } finally {second.close()}
+        } finally {host.close()}
+    }
+
     @Test fun flatJsonRoundTrip() {
         val m=FlatJson.decode(FlatJson.encode("t" to "fwd","id" to 5,"d" to "A|\"q\"\\b"))
         assertEquals("fwd",m["t"]);assertEquals("5",m["id"]);assertEquals("A|\"q\"\\b",m["d"])

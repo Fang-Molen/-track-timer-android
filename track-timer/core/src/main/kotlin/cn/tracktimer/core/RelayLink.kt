@@ -102,7 +102,8 @@ class WsClient private constructor(private val socket: Socket, private val input
  * the finish phone [join]s with the 6-digit code and uses the link as a [LineTransport].
  * [receiveClock] stamps each forwarded request as soon as it is read, before any parsing.
  */
-class RelayLink private constructor(private val ws: WsClient, val code: String, private val receiveClock: () -> Long) : LineTransport, Closeable {
+class RelayLink private constructor(private val ws: WsClient, val code: String, private val receiveClock: () -> Long,
+    val room: String = "", val resumeToken: String = "") : LineTransport, Closeable {
     private val replies = LinkedBlockingQueue<Map<String, String>>()
     private val nextId = AtomicInteger(1)
     @Volatile var peerJoined = false; private set
@@ -126,8 +127,16 @@ class RelayLink private constructor(private val ws: WsClient, val code: String, 
         fun join(url: String, code: String, clock: () -> Long): RelayLink {
             require(code.matches(Regex("[0-9]{6}"))) { "配对码应为6位数字" }
             val ws = WsClient.connect(url)
-            try { ws.sendText(FlatJson.encode("t" to "join", "code" to code)); expect(ws, "joined")
-                return RelayLink(ws, code, clock).also { it.peerJoined = true; it.startReader() }
+            try { ws.sendText(FlatJson.encode("t" to "join", "code" to code)); val m = expect(ws, "joined")
+                return RelayLink(ws, code, clock, m["room"] ?: "", m["resume"] ?: "").also { it.peerJoined = true; it.startReader() }
+            } catch (e: Exception) { ws.close(); throw e }
+        }
+        /** Reconnect after a network drop; the pairing code is single-use, so the server-issued resume token is used. */
+        fun resume(url: String, previous: RelayLink, clock: () -> Long): RelayLink {
+            require(previous.room.isNotEmpty() && previous.resumeToken.isNotEmpty()) { "无法恢复连接" }
+            val ws = WsClient.connect(url)
+            try { ws.sendText(FlatJson.encode("t" to "resume", "room" to previous.room, "resume" to previous.resumeToken)); val m = expect(ws, "joined")
+                return RelayLink(ws, previous.code, clock, previous.room, m["resume"] ?: previous.resumeToken).also { it.peerJoined = true; it.startReader() }
             } catch (e: Exception) { ws.close(); throw e }
         }
     }
@@ -172,4 +181,4 @@ class RelayLink private constructor(private val ws: WsClient, val code: String, 
 }
 class RelayException(val code: String) : IOException(when (code) {
     "BAD_CODE" -> "配对码错误或已被使用"; "EXPIRED" -> "配对码已过期（10分钟），请在起点重新开启"
-    "LOCKED" -> "输错次数过多，请10分钟后再试"; "FULL" -> "服务器繁忙"; else -> "服务器错误：$code" })
+    "BAD_RESUME" -> "无法恢复连接，请在起点重新开启"; "LOCKED" -> "输错次数过多，请10分钟后再试"; "FULL" -> "服务器繁忙"; else -> "服务器错误：$code" })

@@ -6,8 +6,10 @@ android {
         applicationId = "cn.tracktimer.app"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "0.1.8-field"
+        versionCode = 10
+        versionName = "0.1.9-server-dev"
+        // Relay address is configured at build time or typed on the phone; empty by default (no server deployed yet).
+        buildConfigField("String", "RELAY_URL", "\"${(project.findProperty("trackTimerRelayUrl") as String?) ?: ""}\"")
     }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
     kotlinOptions { jvmTarget = "17" }

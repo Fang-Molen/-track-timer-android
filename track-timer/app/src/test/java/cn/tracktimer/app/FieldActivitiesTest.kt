@@ -5,6 +5,8 @@ import android.content.pm.PackageManager
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
+import android.widget.CheckBox
+import android.widget.EditText
 import android.widget.TextView
 import org.junit.Assert.*
 import org.junit.Test
@@ -76,5 +78,21 @@ class FieldActivitiesTest {
             open.performClick();assertFalse(open.isEnabled);c.pause();assertTrue(open.isEnabled)
             java.net.ServerSocket(19119).close()
         }finally{c.stop().destroy()}
+    }
+    @Test fun serverModeAndManualStartControlsArePresentAndSafeByDefault() {
+        val f=Robolectric.buildActivity(FinishActivity::class.java).setup()
+        try {val v=views(f.get().window.decorView)
+            assertFalse(v.filterIsInstance<Button>().first{it.text.startsWith("手动开始计时")}.isEnabled)
+            assertTrue(v.filterIsInstance<CheckBox>().any{it.text.startsWith("通过服务器连接")})
+            assertTrue(v.filterIsInstance<CheckBox>().any{it.text=="不连起点，只用手动开始计时"})
+        } finally{f.pause().stop().destroy()}
+        val s=Robolectric.buildActivity(StartActivity::class.java).setup()
+        try {val v=views(s.get().window.decorView)
+            assertTrue(v.filterIsInstance<CheckBox>().first{it.text.startsWith("发令时闪屏")}.isChecked)
+            val relay=v.filterIsInstance<CheckBox>().first{it.text.startsWith("通过服务器连接")};relay.isChecked=true
+            v.filterIsInstance<EditText>().first{it.hint.toString().startsWith("服务器地址")}.setText("http://bad")
+            v.filterIsInstance<Button>().first{it.text=="开启起点服务"}.performClick()
+            assertEquals("服务器地址需以 wss:// 开头",org.robolectric.shadows.ShadowToast.getTextOfLatestToast()?.toString())
+        } finally{s.pause().stop().destroy()}
     }
 }

@@ -1,0 +1,20 @@
+[Unit]
+Description=Track timer relay (start/finish phone sync)
+After=network.target
+
+[Service]
+User=tt-relay
+Group=tt-relay
+# 只监听本机；外部经 nginx 的 wss:// 进入。端口不得为 3210，且不得与 kaogong-app / kaogong-gate 冲突。
+Environment=PORT=8790 HOST=127.0.0.1 WS_PATH=/tt-relay TRUST_PROXY=1
+ExecStart=/usr/bin/node /opt/track-timer-relay/relay.mjs
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+MemoryMax=128M
+
+[Install]
+WantedBy=multi-user.target
