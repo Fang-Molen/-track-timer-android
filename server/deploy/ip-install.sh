@@ -1,7 +1,7 @@
 #!/bin/bash
 # 跑道计时中转：IP 直连部署（无 nginx）。不碰 3210 / kaogong / docker。
 set -euo pipefail
-C="$1"; B="https://raw.githubusercontent.com/Fang-Molen/-track-timer-android/$C/server"
+C="$1"; B="https://fastly.jsdelivr.net/gh/Fang-Molen/-track-timer-android@$C/server"
 ss -ltn | grep -q ':8790 ' && { echo "ABORT: 8790 in use"; exit 1; }
 id tt-relay >/dev/null 2>&1 || useradd --system --no-create-home --shell /usr/sbin/nologin tt-relay
 mkdir -p /opt/track-timer-relay
