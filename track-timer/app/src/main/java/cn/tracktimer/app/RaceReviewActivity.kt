@@ -33,6 +33,10 @@ class RaceReviewActivity:FieldActivity() {
     @Volatile private var closed=false
     private var retriever:MediaMetadataRetriever?=null
     private var timeline:FrameTimeline?=null
+    private var frameCount=0
+    private var timingBlockReason:String?=null
+    private val stepButtons=mutableListOf<Button>()
+    private data class LoadedVideo(val count:Int,val timeline:FrameTimeline?,val timingIssue:String?)
     private var race:JSONObject?=null
     private lateinit var races:RaceStore
     private lateinit var reports:ReportStore
@@ -62,7 +66,7 @@ class RaceReviewActivity:FieldActivity() {
         detail=label("正在检查录像与帧索引…")
         slider=SeekBar(this).apply{isEnabled=false;page.addView(this)}
         val row=LinearLayout(this);page.addView(row)
-        for(delta in listOf(-10,-1,1,10))row.addView(Button(this).apply{text=if(delta>0)"+$delta 帧" else "$delta 帧";setOnClickListener{select(requested+delta)}},LinearLayout.LayoutParams(0,-2,1f))
+        for(delta in listOf(-10,-1,1,10))row.addView(Button(this).apply{text=if(delta>0)"+$delta 帧" else "$delta 帧";isEnabled=false;stepButtons.add(this);setOnClickListener{select(requested+delta)}},LinearLayout.LayoutParams(0,-2,1f))
         athlete=input("运动员 / 道次，例如1道 张同学")
         saveButton=action("保存此帧成绩"){saveResult()}.apply{isEnabled=false}
         saved=label("");showSaved()
@@ -74,18 +78,32 @@ class RaceReviewActivity:FieldActivity() {
         if(Build.VERSION.SDK_INT<28){detail.text="逐帧判线需要Android 9或以上";return}
         worker.execute {
             runCatching {
-                val reportFile=safeFile(j.getString("cameraReportFile"),"json")
-                val report=JSONObject(reportFile.readText())
-                require(report.optString("runId")==j.getString("raceId") && report.optString("clockSession")==j.getString("clientSession")){"录像与场次时钟会话不匹配"}
-                val video=safeFile(report.getString("videoFile"),"mp4")
+                // Viewing a completed video does not require trustworthy timing metadata.
+                val reportRead=runCatching {JSONObject(safeFile(j.getString("cameraReportFile"),"json").readText())}
+                val report=reportRead.getOrNull()
+                val identityMatches=report?.optString("runId")==j.optString("raceId") &&
+                    report?.optString("clockSession")==j.optString("clientSession")
+                val journalVideo=j.optString("videoFile").takeIf{it.isNotBlank() && it!="null"}
+                val videoName=journalVideo ?: if(identityMatches)report?.optString("videoFile") else null
+                val video=safeFile(videoName ?: error("没有找到本场保存的录像文件"),"mp4")
                 val r=MediaMetadataRetriever();retriever=r;r.setDataSource(video.absolutePath)
-                val count=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toIntOrNull()?:error("系统未提供可核验的逐帧数量")
+                val count=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_FRAME_COUNT)?.toIntOrNull()
+                    ?.takeIf{it>0} ?: error("系统未提供可用的逐帧数量")
                 rotation=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_ROTATION)?.toIntOrNull() ?: 0
                 videoWidth=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_WIDTH)?.toIntOrNull() ?: 0
                 videoHeight=r.extractMetadata(MediaMetadataRetriever.METADATA_KEY_VIDEO_HEIGHT)?.toIntOrNull() ?: 0
-                FrameTimeline.from(report,count)
-            }.onSuccess {t->main.post{if(!closed){timeline=t;slider.max=t.size-1;slider.isEnabled=true;select(0)}}}
-                .onFailure{e->main.post{if(!closed)detail.text="本场不能生成成绩：${e.message}\n请导出日志，原始录像仍保留。"}}
+                val timing=runCatching {
+                    val evidence=report ?: error("相机时间报告缺失或无法读取，请导出日志")
+                    require(identityMatches){"录像与场次时钟会话不匹配"}
+                    require(evidence.getString("videoFile")==video.name){"录像与相机时间报告指向不同文件"}
+                    FrameTimeline.from(evidence,count)
+                }
+                LoadedVideo(count,timing.getOrNull(),timing.exceptionOrNull()?.message)
+            }.onSuccess {loadedVideo->main.post{if(!closed){
+                frameCount=loadedVideo.count;timeline=loadedVideo.timeline;timingBlockReason=loadedVideo.timingIssue
+                slider.max=frameCount-1;slider.isEnabled=true;stepButtons.forEach{it.isEnabled=frameCount>1};select(0)
+            }}}
+                .onFailure{e->main.post{if(!closed)detail.text="无法读取录像：${e.message}\n请导出日志，原始文件仍保留。"}}
         }
     }
     private fun safeFile(name:String,extension:String):File {
@@ -121,8 +139,8 @@ class RaceReviewActivity:FieldActivity() {
         }
     }
     private fun select(index:Int){
-        val t=timeline ?: return;requested=index.coerceIn(0,t.size-1);generation++;loaded=-1;saveButton.isEnabled=false
-        slider.progress=requested;detail.text="正在读取第${requested+1}/${t.size}帧…"
+        if(frameCount<=0)return;requested=index.coerceIn(0,frameCount-1);generation++;loaded=-1;saveButton.isEnabled=false
+        slider.progress=requested;detail.text="正在读取第${requested+1}/${frameCount}帧…"
         main.removeCallbacks(decode);main.postDelayed(decode,80)
     }
     private fun timing():cn.tracktimer.core.SignalResult {
@@ -132,14 +150,18 @@ class RaceReviewActivity:FieldActivity() {
     }
     private fun good(result:cn.tracktimer.core.SignalResult)=result.syncCheckPassed && race?.optBoolean("networkCompleted")==true && race?.optBoolean("interrupted")!=true
     private fun describe(){
-        val t=timeline ?: return
+        if(timeline==null){
+            detail.text="第${requested+1}/$frameCount 帧 · 仅查看录像\n计时不可用：${timingBlockReason ?: "缺少可信时间记录"}\n可继续逐帧查看；请导出终点日志。"
+            saveButton.isEnabled=false;return
+        }
         val result=runCatching{timing()}
-        detail.text="第${requested+1}/${t.size}帧"+result.fold({r->
+        detail.text="第${requested+1}/$frameCount 帧"+result.fold({r->
             " · ${String.format(Locale.CHINA,"%.3f",r.elapsedNs/1e9)} 秒\n"+if(good(r))"训练信号成绩 · 对时复核通过" else "仅供复核 · 对时或场次完整性未通过"
         },{"\n${it.message ?: "发令前画面或缺少发令记录"}"})
         saveButton.isEnabled=loaded==requested && result.isSuccess
     }
     private fun saveResult(){
+        if(timeline==null){message("本场计时不可用，不能保存成绩");return}
         if(loaded!=requested){message("请等画面加载完成");return}
         val name=athlete.text.toString().trim();if(name.isEmpty()){message("请输入运动员或道次");return}
         runCatching {

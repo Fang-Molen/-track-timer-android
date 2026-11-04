@@ -25,6 +25,21 @@ class HighSpeedCalibrationTest {
     }
     private fun result(r: JSONObject): JSONObject { HighSpeedCalibration.annotate(r); return r.getJSONObject("clockCalibration") }
 
+    @Test fun rejectedClockNamesTheFailedExistingChecks() {
+        val unknown=fixture().put("cameraClockRealtime",false)
+        val short=fixture();val frames=short.getJSONArray("frames")
+        while(frames.length()>100)frames.remove(frames.length()-1)
+        val shifted=fixture();shifted.getJSONArray("codecObservedElapsedNs").put(0,0)
+        for((r,code) in listOf(unknown to "realtime_source",short to "alignment_span",shifted to "codec_clock")) {
+            val c=result(r);assertFalse(c.getBoolean("sampledClockAlignmentObserved"))
+            val failures=c.getJSONArray("failedChecks");assertTrue((0 until failures.length()).any{failures.getString(it)==code})
+        }
+    }
+    @Test fun muxRoundingAloneDoesNotBecomeASampledClockFailure() {
+        val r=fixture();r.getJSONArray("encodedPtsNs").put(10,83_330_000L)
+        val c=result(r);assertTrue(c.getBoolean("sampledClockAlignmentObserved"));assertFalse(c.getBoolean("fileClockMappingObserved"))
+        assertEquals(0,c.getJSONArray("failedChecks").length())
+    }
     @Test fun sparse120And240MetadataCanAlignWithoutInventingUnsampledSensorTimes() {
         for (fps in listOf(120,240)) {
             val r=fixture(fps); val c=result(r)

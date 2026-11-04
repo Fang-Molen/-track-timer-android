@@ -13,6 +13,39 @@ object HighSpeedCalibration {
     private fun increasing(a: List<Long>, allowZero: Boolean = false): Boolean =
         a.size >= 2 && a.all { if (allowZero) it >= 0 else it > 0 } && a.zipWithNext().all { (a,b) -> b > a }
 
+    /** Explains the existing gate; missing legacy fields never invent a specific failure. */
+    fun failedChecks(r:JSONObject):List<String> {
+        val c=r.optJSONObject("clockCalibration") ?: return listOf("missing_report")
+        if(c.optBoolean("sampledClockAlignmentObserved"))return emptyList()
+        val failed=mutableListOf<String>()
+        fun check(code:String,available:Boolean,passed:Boolean){if(available && !passed)failed.add(code)}
+        check("video_health",r.has("requestedFps") && r.has("encodedFps"),
+            CameraStatistics.videoRateReached(r) && r.optBoolean("codecEosReached") && r.isNull("codecError"))
+        check("realtime_source",r.has("cameraClockRealtime"),r.optBoolean("cameraClockRealtime"))
+        for((key,code) in listOf("rawTimestampSequenceValid" to "raw_sequence","sensorMetadataSequenceValid" to "metadata_clock","codecClockPlausible" to "codec_clock"))
+            check(code,c.has(key),c.optBoolean(key))
+        check("match_count",c.has("matchedMetadataCount"),c.optInt("matchedMetadataCount")>=30)
+        check("unmatched_metadata",c.has("matchedMetadataCount") && c.has("eligibleMetadataCount"),c.optInt("matchedMetadataCount")==c.optInt("eligibleMetadataCount"))
+        check("alignment_span",c.has("matchedSpanNs"),c.optLong("matchedSpanNs")>=5_000_000_000L)
+        check("alignment_coverage",c.has("overlapCoverage"),c.optDouble("overlapCoverage")>=.8)
+        return failed.ifEmpty{listOf("details_unavailable")}
+    }
+    fun failureDescription(r:JSONObject):String = failedChecks(r).joinToString("；") {code->
+        when(code){
+            "video_health"->"录像帧率、时长或完整性未达要求"
+            "realtime_source"->"相机未声明使用本机统一时钟"
+            "raw_sequence"->"编码时间戳数值或顺序异常"
+            "metadata_clock"->"相机元数据或回调时间异常"
+            "codec_clock"->"编码时间戳与本机时钟观测不一致"
+            "match_count"->"可对齐的相机样本少于30个"
+            "unmatched_metadata"->"部分相机时间戳未匹配编码帧"
+            "alignment_span"->"有效对齐时长不足5秒"
+            "alignment_coverage"->"对齐覆盖不足80%"
+            "missing_report"->"缺少相机时钟检查记录"
+            else->"未记录具体失败项，请导出日志"
+        }
+    }
+
     fun annotate(r: JSONObject) {
         val raw = longs(r, "codecPtsNs")
         val observed = longs(r, "codecObservedElapsedNs")
@@ -74,5 +107,6 @@ object HighSpeedCalibration {
             .put("fileZeroLocalElapsedNs",if (mapped) raw.first() else JSONObject.NULL)
             .put("note","仅检查返回的采样时间戳与编码时间戳；不证明每帧独立曝光、光学时刻或整套计时精度。未拟合偏移来制造通过。")
         r.put("clockCalibration",c).put("captureToEncodedMappingVerified",false).put("precisionVerified",false)
+        c.put("failedChecks",JSONArray(failedChecks(r)))
     }
 }

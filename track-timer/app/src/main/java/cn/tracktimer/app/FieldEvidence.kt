@@ -18,7 +18,7 @@ class FrameTimeline private constructor(private val raw:LongArray) {
         fun from(r:JSONObject,decodedFrameCount:Int):FrameTimeline {
             require(r.optBoolean("codecEosReached") && r.isNull("error") && r.isNull("codecError") &&
                 r.isNull("encodedInspectionError") && !r.optBoolean("cancelled") && r.optInt("failedCaptures")==0){"录像不完整或存在采集错误"}
-            require(r.optJSONObject("clockCalibration")?.optBoolean("sampledClockAlignmentObserved")==true){"相机与本机时钟未通过检查"}
+            require(r.optJSONObject("clockCalibration")?.optBoolean("sampledClockAlignmentObserved")==true){"相机与本机时钟未通过检查：${HighSpeedCalibration.failureDescription(r)}"}
             val raw=r.getJSONArray("codecPtsNs");val file=r.getJSONArray("encodedPtsNs")
             require(raw.length()>=2 && raw.length()==decodedFrameCount && file.length()==raw.length() &&
                 r.getInt("encodedFrameCount")==raw.length() && r.getInt("codecFrameCount")==raw.length()){"视频与原始帧索引数量不一致"}
