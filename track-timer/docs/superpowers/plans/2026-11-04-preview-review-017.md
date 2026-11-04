@@ -22,16 +22,16 @@
 ### Task1: Preview geometry
 Files: new CameraPreviewTransform.kt, FinishActivity.kt; CameraPreviewTransformTest.kt.
 Interface: matrix(viewWidth,viewHeight,bufferWidth,bufferHeight,sensorOrientation,displayRotationDegrees):Matrix.
-- [ ] Test hand-derived720x1280 upright pixels in1080x640 view: frame rect(360,0,720,640), equal pixel scale, positive direction;90/270 sensor same portrait; display90/180 and resized view remain centered/proportional.
-- [ ] RED then minimal geometry + on-layout update, full core/app GREEN, commit.
+- [x] Test hand-derived720x1280 upright pixels in1080x640 view: frame rect(360,0,720,640), equal pixel scale, positive direction;90/270 sensor same portrait; display90/180 and resized view remain centered/proportional.
+- [x] RED then minimal geometry + on-layout update, full core/app GREEN, commit.
 
 ### Task2: Playable video and clock diagnostics
 Files: RaceReviewActivity.kt, HighSpeedCalibration.kt, FieldEvidence.kt; existing review/calibration tests.
 Interfaces: independent frameCount and optional FrameTimeline; HighSpeedCalibration.failedChecks(report):List<String>, failureDescription(report):String.
-- [ ] Add UI regression for failed clock with readable3-frame video: first bitmap/nonzero index navigation, no elapsed/save/results; old session valid path preserved; mismatched report and missing metadata also cannot save.
-- [ ] RED then separate video setup from timeline validation; keep exact-index loading/generation gate.
-- [ ] Test rejected fixtures yield corresponding diagnostics while clean120/240 and file-rounding-only remain same pass/fail; implement diagnostic fields, full suite/assemble/lint GREEN; commit.
+- [x] Add UI regression for failed clock with readable3-frame video: first bitmap/nonzero index navigation, no elapsed/save/results; old session valid path preserved; mismatched report and missing metadata also cannot save.
+- [x] RED then separate video setup from timeline validation; keep exact-index loading/generation gate.
+- [x] Test rejected fixtures yield corresponding diagnostics while clean120/240 and file-rounding-only remain same pass/fail; implement diagnostic fields, full suite/assemble/lint GREEN; commit.
 
 ### Task3: Review and delivery
-- [ ] One independent whole-branch review; consequential fixes RED→GREEN.
-- [ ] APK version/signature/bytes, validation evidence/guide; fresh fetch/FF upload original repo; compare remote blob bytes and rootREADME.
+- [x] One independent whole-branch review; consequential fixes RED→GREEN.
+- [x] APK version/signature/bytes, validation evidence/guide; fresh fetch/FF upload original repo; compare remote blob bytes and rootREADME.

@@ -1,0 +1,5 @@
+Source: b745870a878e0c340a8c53ef0e3cd2f053d6e6a7
+JDK21 / Gradle8.11.1 / SDK35
+Tasks: :core:test :app:testDebugUnitTest :app:assembleDebug :app:lintDebug -Pkotlin.compiler.execution.strategy=in-process
+BUILD SUCCESSFUL in 2m 14s
+57 actionable tasks: 15 executed, 42 up-to-date

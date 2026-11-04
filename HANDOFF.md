@@ -1,12 +1,18 @@
-# 跑道计时交接 · 0.1.6-field
+# 跑道计时交接 · 0.1.7-field
 
 更新：2026-11-04（北京时间）。最新用户指示：选择信号传输，直接做可在跑道实测的App，明天测试。用户已授权开发和上传到本仓库；不要另建仓库或重复确认。
 
+## 当前问题与修复
+
+用户报告0.1.6预览被压缩/旋转，回看黑框，截图提示“相机与本机时钟未通过检查”。本次没有收到对应新JSON/视频。代码确认预览重复应用SENSOR_ORIENTATION；回看则在时钟门槛失败后根本没有解码第一帧。
+
+0.1.7调整TextureView传感器/显示旋转边界、等比例居中与尺寸变化重算；回看把视频帧数与可信时间轴分开，失败报告仍能看可读视频，禁止保存未经校验的成绩；细化现有时钟门槛的失败原因。门槛、2us容差、原始PTS和全部精度标志均未放宽。下一步先获取这次终点小日志，确认实际失败条件。不能把“可以看视频”说成“计时已通过”，也不能把截图黑框说成原MP4一定黑屏。
+
 ## 当前范围
 
-两台安卓，训练30/60/100/200/400米，单人/多人，遮挡接受同帧并列。用户使用iPad网页，交付GitHub APK链接。最新为versionCode7/versionName0.1.6-field，同包名cn.tracktimer.app、同调试签名，可覆盖旧版。根README保留用户原内容。
+两台安卓，训练30/60/100/200/400米，单人/多人，遮挡接受同帧并列。用户使用iPad网页，交付GitHub APK链接。最新为versionCode8/versionName0.1.7-field，同包名cn.tracktimer.app、同调试签名，可覆盖旧版。根README保留用户原内容。
 
-源码在track-timer/，APK与中文步骤在deliverables/。先读RELEASE-0.1.6.md、track-timer/verification/VALIDATION-0.1.6.md和field-signal-016设计/计划，不要从零重写。
+源码在track-timer/，APK与中文步骤在deliverables/。先读RELEASE-0.1.7.md与0.1.6操作说明、track-timer/verification/VALIDATION-0.1.7.md和field-signal-016设计/计划，不要从零重写。
 
 ## 本版实现
 
