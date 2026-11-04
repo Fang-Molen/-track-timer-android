@@ -1,0 +1,44 @@
+{
+  "core": {
+    "tests": 34,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "app": {
+    "tests": 139,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0
+  },
+  "total": 173,
+  "lint": {
+    "Warning": 14
+  },
+  "lint_ids": {
+    "LockedOrientationActivity": 6,
+    "DiscouragedApi": 6,
+    "UsableSpace": 2
+  },
+  "production_commit": "50f77d5289d477f6e2ffe4c066537785e709d42e",
+  "apk": {
+    "versionCode": 11,
+    "versionName": "0.1.10-field",
+    "size": 1235809,
+    "sha256": "3b962c6d719ffb9cea78fa19f7166512a50453a0dcfa16e76217f406de7a5b89"
+  },
+  "independent_review": {
+    "important_findings": 2,
+    "fixed_with_regressions": 2,
+    "second_review": false,
+    "deferred_minors": 0
+  },
+  "visual_validation": {
+    "native_robolectric_sizes": [
+      "360x800",
+      "320x640"
+    ],
+    "simulated_video_content": true,
+    "physical_handset_test": false
+  }
+}
