@@ -41,6 +41,7 @@ class RaceReviewActivity:FieldActivity() {
     private lateinit var races:RaceStore
     private lateinit var reports:ReportStore
     private lateinit var image:ImageView
+    private lateinit var imageSizer:VideoFrameSizer
     private lateinit var line:FinishLineView
     private lateinit var slider:SeekBar
     private lateinit var detail:TextView
@@ -60,6 +61,7 @@ class RaceReviewActivity:FieldActivity() {
         val j=runCatching{races.load(id)}.getOrElse{label("场次读取失败：${it.message}");return};race=j
         label("拖动红线对齐画面中的终点线。逐帧选择躯干第一次到达终点线的画面，再保存运动员成绩。",15)
         val frame=FrameLayout(this);page.addView(frame,LinearLayout.LayoutParams(-1,dp(280)))
+        imageSizer=VideoFrameSizer(frame)
         image=ImageView(this).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setBackgroundColor(Color.BLACK)}
         line=FinishLineView(this).apply{fraction=j.optDouble("finishLineFraction",.5).toFloat()}
         frame.addView(image,FrameLayout.LayoutParams(-1,-1));frame.addView(line,FrameLayout.LayoutParams(-1,-1))
@@ -133,7 +135,7 @@ class RaceReviewActivity:FieldActivity() {
             }
             main.post {
                 if(closed || version!=generation){result.getOrNull()?.recycle();return@post}
-                result.onSuccess {b->val previous=bitmap;bitmap=b;image.setImageBitmap(b);previous?.recycle();loaded=index;describe()}
+                result.onSuccess {b->val previous=bitmap;bitmap=b;image.setImageBitmap(b);imageSizer.setImageSize(b.width,b.height);previous?.recycle();loaded=index;describe()}
                     .onFailure{detail.text="无法读取第${index+1}帧：${it.message}";saveButton.isEnabled=false}
             }
         }

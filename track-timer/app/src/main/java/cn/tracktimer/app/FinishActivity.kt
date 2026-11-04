@@ -21,6 +21,7 @@ class FinishActivity:FieldActivity() {
     private lateinit var fps:Spinner
     private lateinit var previewEnabled:CheckBox
     private lateinit var texture:TextureView
+    private lateinit var previewSizer:VideoFrameSizer
     private lateinit var status:TextView
     private lateinit var prepare:Button
     private lateinit var stop:Button
@@ -49,6 +50,7 @@ class FinishActivity:FieldActivity() {
             page.addView(this,LinearLayout.LayoutParams(-1,dp(230)))
             addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_->updatePreviewTransform() }
         }
+        previewSizer=VideoFrameSizer(texture)
         status=label("尚未开始",18)
         prepare=action("连接、对时并开始录像"){
             if(Build.VERSION.SDK_INT<28)message("终点逐帧判线需要Android 9或以上")
@@ -127,6 +129,8 @@ class FinishActivity:FieldActivity() {
         if(!mode.previewEnabled || texture.width<=0 || texture.height<=0)return
         @Suppress("DEPRECATION")
         val displayRotation=windowManager.defaultDisplay.rotation*90
+        val swap=(c.sensorOrientation-displayRotation)%180!=0
+        previewSizer.setImageSize(if(swap)c.size.height else c.size.width,if(swap)c.size.width else c.size.height)
         texture.setTransform(CameraPreviewTransform.matrix(texture.width,texture.height,c.size.width,c.size.height,c.sensorOrientation,displayRotation))
     }
     private fun stopRace(aborted:Boolean){
