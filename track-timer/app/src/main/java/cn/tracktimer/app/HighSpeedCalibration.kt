@@ -25,6 +25,7 @@ object HighSpeedCalibration {
         check("video_health",healthAvailable,
             CameraStatistics.videoRateReached(r) && r.optBoolean("codecEosReached") && r.isNull("codecError"))
         check("realtime_source",r.has("cameraClockRealtime"),r.optBoolean("cameraClockRealtime"))
+        check("metadata_batch",c.has("metadataBatchValid"),c.optBoolean("metadataBatchValid"))
         for((key,code) in listOf("rawTimestampSequenceValid" to "raw_sequence","sensorMetadataSequenceValid" to "metadata_clock","codecClockPlausible" to "codec_clock"))
             check(code,c.has(key),c.optBoolean(key))
         check("match_count",c.has("matchedMetadataCount"),c.optInt("matchedMetadataCount")>=30)
@@ -40,6 +41,7 @@ object HighSpeedCalibration {
             "realtime_source"->"相机未声明使用本机统一时钟"
             "raw_sequence"->"编码时间戳数值或顺序异常"
             "metadata_clock"->"相机元数据或回调时间异常"
+            "metadata_batch"->"高速相机批次不完整或时间戳展开规则不匹配"
             "codec_clock"->"编码时间戳与本机时钟观测不一致"
             "match_count"->"可对齐的相机样本少于30个"
             "unmatched_metadata"->"部分相机时间戳未匹配编码帧"
@@ -50,17 +52,28 @@ object HighSpeedCalibration {
         }
     }
 
+    /** Recheck legacy expanded batches in memory. Original sidecars and all recorded times survive. */
+    fun recheckForReview(r:JSONObject):JSONObject {
+        val c=r.optJSONObject("clockCalibration") ?: return r
+        if(c.optBoolean("sampledClockAlignmentObserved") || c.has("metadataSampleMode"))return r
+        val selection=HighSpeedMetadata.select(r)
+        if(!selection.expanded || !selection.valid)return r
+        return JSONObject(r.toString()).also{annotate(it)}
+    }
+
     fun annotate(r: JSONObject) {
         val raw = longs(r, "codecPtsNs")
         val observed = longs(r, "codecObservedElapsedNs")
         val file = longs(r, "encodedPtsNs")
         val frames = r.optJSONArray("frames") ?: JSONArray()
-        val sensors = (0 until frames.length()).map { frames.getJSONObject(it).optLong("sensorNs", -1L) }
-        val numbers = (0 until frames.length()).map { frames.getJSONObject(it).optLong("frameNumber", -1L) }
+        val selection=HighSpeedMetadata.select(r)
+        val allSensors = (0 until frames.length()).map { frames.getJSONObject(it).optLong("sensorNs", -1L) }
+        val sensors=selection.indices.map{allSensors[it]}
+        val numbers = selection.indices.map { frames.getJSONObject(it).optLong("frameNumber", -1L) }
         val callbacks = (0 until frames.length()).map { frames.getJSONObject(it).optLong("callbackElapsedNs", -1L) }
         val rawValid = increasing(raw)
-        val sensorValid = increasing(sensors) && increasing(numbers, true) && sensors.indices.all {
-            callbacks[it] >= sensors[it] && callbacks[it] - sensors[it] <= 2_000_000_000L
+        val sensorValid = selection.valid && increasing(allSensors) && increasing(sensors) && increasing(numbers, true) && allSensors.indices.all {
+            callbacks[it] >= allSensors[it] && callbacks[it] - allSensors[it] <= 2_000_000_000L
         }
         val codecClockPlausible = rawValid && observed.size == raw.size && raw.indices.all {
             observed[it] >= raw[it] && observed[it] - raw[it] <= 2_000_000_000L
@@ -98,10 +111,14 @@ object HighSpeedCalibration {
         val aligned = healthy && r.optBoolean("cameraClockRealtime") && codecClockPlausible && sensorValid &&
             matches.length() >= 30 && matches.length() == eligible && matchedSpan >= 5_000_000_000L && coverage >= .8
         val mapped = aligned && fileMatches
-        val c = JSONObject().put("method","direct_sensor_encoder_pts_no_offset_fit")
+        val c = JSONObject().put("method",if(selection.expanded)"direct_batch_anchor_encoder_pts_no_offset_fit" else "direct_sensor_encoder_pts_no_offset_fit")
             .put("toleranceNs",TOLERANCE_NS).put("rawTimestampSequenceValid",rawValid)
             .put("sensorMetadataSequenceValid",sensorValid).put("codecClockPlausible",codecClockPlausible)
-            .put("metadataCount",sensors.size).put("eligibleMetadataCount",eligible)
+            .put("metadataCount",frames.length()).put("metadataAnchorCount",sensors.size)
+            .put("metadataDerivedCount",if(selection.valid)frames.length()-sensors.size else 0)
+            .put("metadataSampleMode",if(selection.expanded)"validated_batch_endpoints" else "direct_samples")
+            .put("metadataBatchSize",selection.batchSize).put("metadataBatchValid",selection.valid)
+            .put("eligibleMetadataCount",eligible)
             .put("matchedMetadataCount",matches.length()).put("matchedSpanNs",matchedSpan).put("overlapCoverage",coverage)
             .put("matches",matches).put("maxMatchedResidualNs",if (matches.length()>0) maxResidual else JSONObject.NULL)
             .put("rawCodecFps",if (span>0) (raw.size-1)*1e9/span else JSONObject.NULL)

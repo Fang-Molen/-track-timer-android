@@ -15,7 +15,8 @@ class FrameTimeline private constructor(private val raw:LongArray) {
     val size:Int get()=raw.size
     fun timestamp(index:Int):Long=raw[index]
     companion object {
-        fun from(r:JSONObject,decodedFrameCount:Int):FrameTimeline {
+        fun from(report:JSONObject,decodedFrameCount:Int):FrameTimeline {
+            val r=HighSpeedCalibration.recheckForReview(report)
             require(r.optBoolean("codecEosReached") && r.isNull("error") && r.isNull("codecError") &&
                 r.isNull("encodedInspectionError") && !r.optBoolean("cancelled") && r.optInt("failedCaptures")==0){"录像不完整或存在采集错误"}
             require(r.optJSONObject("clockCalibration")?.optBoolean("sampledClockAlignmentObserved")==true){"相机与本机时钟未通过检查：${HighSpeedCalibration.failureDescription(r)}"}
